@@ -1,26 +1,116 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ─── Inherit design tokens (ported from prototype styles.css) ──────────────
+   Dark theme only. Defined in @theme so they generate Tailwind utilities
+   (bg-*, text-*, border-*, rounded-*) AND are emitted as :root CSS variables
+   for custom gradients/shadows. */
+@theme {
+  /* Surfaces */
+  --color-bg: #06080f;
+  --color-bg-2: #090c15;
+  --color-surface: #0d121d;
+  --color-surface-2: #11172380;
+  --color-surface-3: #151c2a;
+
+  /* Borders (translucent white) */
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+  --color-border-hover: rgba(255, 255, 255, 0.18);
+
+  /* Foreground text (5-tier hierarchy) */
+  --color-fg: #f1f5f9;
+  --color-fg-2: #9aa6b8;
+  --color-fg-3: #6b7689;
+  --color-fg-4: #4a5468;
+
+  /* Brand blue */
+  --color-blue: #2ea0f8;
+  --color-blue-2: #0ea5e9;
+  --color-blue-deep: #0b66b8;
+  --color-blue-glow: rgba(46, 160, 248, 0.28);
+  --color-blue-soft: rgba(46, 160, 248, 0.12);
+  --color-blue-border: rgba(46, 160, 248, 0.4);
+
+  /* Status — green / amber / red */
+  --color-green: #2ecf85;
+  --color-green-soft: rgba(46, 207, 133, 0.13);
+  --color-green-border: rgba(46, 207, 133, 0.35);
+  --color-amber: #f5b544;
+  --color-amber-soft: rgba(245, 181, 68, 0.13);
+  --color-amber-border: rgba(245, 181, 68, 0.35);
+  --color-red: #ef5a5a;
+  --color-red-soft: rgba(239, 90, 90, 0.13);
+  --color-red-border: rgba(239, 90, 90, 0.4);
+
+  /* Neutral chip */
+  --color-gray-soft: rgba(255, 255, 255, 0.06);
+  --color-gray-border: rgba(255, 255, 255, 0.15);
+
+  /* Radii (override Tailwind defaults to match prototype) */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Typography */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ─── Base layer ─────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  body {
+    background: radial-gradient(
+        1100px 600px at 50% -200px,
+        rgba(46, 160, 248, 0.05),
+        transparent 60%
+      ),
+      var(--color-bg);
+    color: var(--color-fg);
+    font-feature-settings: "cv11", "ss01", "ss03";
+    text-rendering: optimizeLegibility;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  /* Thin custom scrollbar to match the dark chrome */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Lightweight global toast (appended to <body> by lib/toast.ts) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translate(-50%, 12px);
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #14171e;
+  border: 1px solid var(--color-border-hover);
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.6);
+  color: var(--color-fg);
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+  z-index: 999;
+}
+.toast.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }

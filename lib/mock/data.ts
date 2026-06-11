@@ -1,0 +1,586 @@
+// Phase 0 mock data — ported verbatim from the prototype's data.js.
+// Shapes mirror the prototype so screens port 1:1; these get replaced by the
+// Drizzle-backed queries in Phase 1. Types are intentionally loose (single- vs
+// multi-round experiences) to match the prototype exactly.
+
+export type Outcome =
+  | "Offer"
+  | "Shortlisted"
+  | "Awaiting"
+  | "Rejected"
+  | "Withdrew";
+export type RoundStatus = "Passed" | "Failed" | "Awaiting";
+export type ReviewStatus =
+  | "Under Review"
+  | "Approved"
+  | "Needs Edits"
+  | "Hidden"
+  | "Deleted";
+export type TipCategory = "resource" | "strategy" | "mindset";
+
+export interface CompanyListItem {
+  slug: string;
+  name: string;
+  industry: string;
+  count: number;
+  active: boolean;
+  lastDays: number;
+}
+
+export interface Author {
+  name: string | null;
+  batch: string;
+  anonymous: boolean;
+}
+
+export interface RoundEntry {
+  round: string;
+  status: RoundStatus;
+  questions: number;
+  avgDifficulty?: number;
+  platform?: string;
+}
+
+export interface QuestionDetail {
+  n: number;
+  topic: string;
+  difficulty: number;
+  platform: string;
+  time: string;
+  summary: string;
+  approach: string;
+}
+
+export interface PrepTip {
+  category: TipCategory;
+  text: string;
+}
+
+export interface Experience {
+  id: string;
+  author: Author;
+  role: string;
+  year: number;
+  submittedAt: string;
+  helpful?: number;
+  views?: number;
+  excerpt?: string;
+  // single-round shape
+  round?: string;
+  outcome?: Outcome;
+  questions?: number;
+  avgDifficulty?: number;
+  platform?: string;
+  duration?: string;
+  reviewedAt?: string;
+  // multi-round shape
+  rounds?: RoundEntry[];
+  overallOutcome?: Outcome;
+  // detail page
+  overview?: string;
+  questionsList?: QuestionDetail[];
+  prepTips?: PrepTip[];
+  reflection?: string;
+  topics?: string[];
+  company?: string;
+}
+
+export interface RoleCount {
+  name: string;
+  count: number;
+}
+export interface TopicCount {
+  name: string;
+  count: number;
+}
+export interface RoleAggregate {
+  commonPath: string[];
+  pathFunnel: number[];
+  topTopics: TopicCount[];
+}
+export interface CompanyDetail {
+  slug: string;
+  name: string;
+  industry: string;
+  location: string;
+  activelyRecruiting: boolean;
+  totalExperiences: number;
+  breakdown: Record<string, number>;
+  years: number[];
+  avgDifficulty: number;
+  roles: RoleCount[];
+  byRole: Record<string, RoleAggregate>;
+  commonPath: string[];
+  pathFunnel: number[];
+  topTopics: TopicCount[];
+}
+
+export interface MyPost {
+  id: string;
+  company: string;
+  role: string;
+  overallOutcome: Outcome;
+  status: ReviewStatus;
+  submittedAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  tips: number;
+  views?: number;
+  helpful?: number;
+  opsNote?: string;
+  hiddenReason?: string;
+  hiddenAt?: string;
+  rounds: RoundEntry[];
+}
+
+export interface OpsQueueItem {
+  id: string;
+  realAuthor: { name: string; batch: string; email: string };
+  bylineAs: "real" | "anonymous";
+  company: string;
+  role: string;
+  round: string;
+  outcome: Outcome;
+  submittedAgo: string;
+  questions: number;
+  tips: number;
+  hasReflection: boolean;
+  overview: string;
+}
+
+export const companies: CompanyListItem[] = [
+  { slug: "amazon", name: "Amazon", industry: "E-commerce · Cloud", count: 14, active: true, lastDays: 2 },
+  { slug: "microsoft", name: "Microsoft", industry: "Cloud · Productivity", count: 11, active: true, lastDays: 4 },
+  { slug: "google", name: "Google", industry: "Search · Cloud", count: 9, active: true, lastDays: 1 },
+  { slug: "atlassian", name: "Atlassian", industry: "Developer tools", count: 7, active: true, lastDays: 6 },
+  { slug: "razorpay", name: "Razorpay", industry: "Fintech", count: 6, active: false, lastDays: 22 },
+  { slug: "sprinklr", name: "Sprinklr", industry: "CX SaaS", count: 5, active: true, lastDays: 9 },
+  { slug: "zomato", name: "Zomato", industry: "Consumer · Logistics", count: 4, active: false, lastDays: 31 },
+  { slug: "walmart-tech", name: "Walmart Global Tech", industry: "Retail · E-commerce", count: 4, active: true, lastDays: 11 },
+];
+
+export const company: CompanyDetail = {
+  slug: "amazon",
+  name: "Amazon",
+  industry: "E-commerce · Cloud Infrastructure",
+  location: "Bengaluru, IN",
+  activelyRecruiting: true,
+  totalExperiences: 14,
+  breakdown: { OA: 6, "Tech 1": 4, "Tech 2": 2, "System Design": 0, Behavioral: 1, HR: 1 },
+  years: [2026, 2025],
+  avgDifficulty: 3.4,
+  roles: [
+    { name: "SDE Intern", count: 10 },
+    { name: "SDE-1", count: 3 },
+    { name: "Data Analyst", count: 1 },
+  ],
+  byRole: {
+    "SDE Intern": {
+      commonPath: ["OA", "Tech 1", "Tech 2", "Behavioral", "HR"],
+      pathFunnel: [10, 7, 4, 3, 2],
+      topTopics: [
+        { name: "Arrays & Strings", count: 9 },
+        { name: "Graphs (BFS/DFS)", count: 6 },
+        { name: "Dynamic Programming", count: 6 },
+        { name: "OOP Design", count: 5 },
+        { name: "Trees", count: 4 },
+        { name: "Behavioural - Leadership", count: 4 },
+      ],
+    },
+    "SDE-1": {
+      commonPath: ["OA", "Tech 1", "Tech 2", "System Design", "Behavioral", "Bar Raiser"],
+      pathFunnel: [3, 3, 2, 2, 1, 1],
+      topTopics: [
+        { name: "System Design", count: 3 },
+        { name: "Concurrency", count: 2 },
+        { name: "Graphs (BFS/DFS)", count: 2 },
+        { name: "Behavioural - Leadership", count: 2 },
+        { name: "OOP Design", count: 1 },
+      ],
+    },
+    "Data Analyst": {
+      commonPath: ["OA", "SQL Round", "Case Study", "HR"],
+      pathFunnel: [1, 1, 1, 1],
+      topTopics: [
+        { name: "SQL", count: 1 },
+        { name: "Statistics", count: 1 },
+        { name: "Case Study", count: 1 },
+        { name: "Behavioural - Leadership", count: 1 },
+      ],
+    },
+  },
+  commonPath: ["OA", "Tech 1", "Tech 2", "Behavioral", "HR"],
+  pathFunnel: [14, 9, 5, 3, 2],
+  topTopics: [
+    { name: "Arrays & Strings", count: 11 },
+    { name: "Dynamic Programming", count: 8 },
+    { name: "Graphs (BFS/DFS)", count: 7 },
+    { name: "OOP Design", count: 6 },
+    { name: "Trees", count: 5 },
+    { name: "Behavioural - Leadership", count: 5 },
+    { name: "SQL", count: 3 },
+  ],
+};
+
+export const experiences: Experience[] = [
+  {
+    id: "exp-021",
+    author: { name: "Riya K.", batch: "'27", anonymous: false },
+    role: "SDE Intern",
+    year: 2026,
+    overallOutcome: "Offer",
+    submittedAt: "May 04, 2026",
+    helpful: 64,
+    views: 980,
+    excerpt:
+      "Full pipeline writeup: OA, two technical rounds, one behavioural, HR. Sharing the question themes and the LP stories I leaned on - happy to chat 1:1.",
+    rounds: [
+      { round: "OA", status: "Passed", questions: 4, avgDifficulty: 3, platform: "HackerRank" },
+      { round: "Tech 1", status: "Passed", questions: 3, avgDifficulty: 4, platform: "Amazon Chime" },
+      { round: "Tech 2", status: "Passed", questions: 2, avgDifficulty: 4, platform: "Amazon Chime" },
+      { round: "Behavioral", status: "Passed", questions: 5, avgDifficulty: 2, platform: "Amazon Chime" },
+      { round: "HR", status: "Passed", questions: 4, avgDifficulty: 1, platform: "Amazon Chime" },
+    ],
+  },
+  {
+    id: "exp-019",
+    author: { name: "Thrishal M.", batch: "'27", anonymous: false },
+    role: "SDE Intern",
+    round: "OA",
+    year: 2026,
+    outcome: "Shortlisted",
+    submittedAt: "Apr 28, 2026",
+    helpful: 42,
+    views: 612,
+    reviewedAt: "Apr 29, 2026",
+    duration: "110 min",
+    questions: 4,
+    avgDifficulty: 3,
+    platform: "HackerRank",
+    excerpt:
+      "Two coding questions (90 mins) plus a 20-min aptitude section. First question was a sliding-window variant, second was a graph traversal on a grid. Aptitude was on the easier side.",
+    overview:
+      "Standard Amazon SDE-Intern Online Assessment hosted on HackerRank. The window was 110 minutes - 90 for two coding questions and ~20 for a short aptitude/work-style section. Camera on, tab-switch detection enabled, no copy-paste from outside the editor. The coding section was language-agnostic; I used C++17. Both questions had partial credit (~10 sample test-cases visible, 30 hidden).",
+    questionsList: [
+      {
+        n: 1,
+        topic: "Arrays · Sliding Window",
+        difficulty: 3,
+        platform: "HackerRank",
+        time: "~35 min",
+        summary:
+          "Given an array of N integers and a window size K, return the count of distinct sub-arrays of length K whose sum is strictly greater than a given threshold T. Constraints: N ≤ 2·10⁵, values up to 10⁹.",
+        approach:
+          "Classic prefix-sum + hashing on the window-tuple. Brute-force is O(N·K) and TLE'd on 3 cases for me - moving to a rolling hash plus a HashSet to dedupe the windows by content cleared it.",
+      },
+      {
+        n: 2,
+        topic: "Graphs · BFS on Grid",
+        difficulty: 4,
+        platform: "HackerRank",
+        time: "~50 min",
+        summary:
+          "M×N grid with cells marked 0/1/2. Starting from every '2' cell simultaneously, find the minimum time for all '1' cells to become '2' (with standard 4-directional spread). Return -1 if impossible.",
+        approach:
+          "Multi-source BFS. Seed the queue with every '2' cell up front and track total steps. The trap is forgetting to verify all '1' cells were actually reached before returning - easy to off-by-one if you increment time at the wrong point.",
+      },
+      {
+        n: 3,
+        topic: "Aptitude · Quantitative",
+        difficulty: 2,
+        platform: "HackerRank",
+        time: "~12 min",
+        summary:
+          "8 multiple-choice questions on probability, ratios, and basic time-and-work. No negative marking. Pacing is the only real challenge - < 90s per question.",
+        approach:
+          "Skip the long-reading ones first, then come back. I left 1 unattempted and still cleared.",
+      },
+      {
+        n: 4,
+        topic: "Work Style · Behavioural",
+        difficulty: 1,
+        platform: "HackerRank",
+        time: "~8 min",
+        summary:
+          'Likert-scale statements ("I prefer working on a small team where everyone owns a clear scope", etc). ~25 statements.',
+        approach:
+          "Be consistent - duplicate statements appear phrased in opposite directions. Don't try to game it; the inconsistency itself is a signal.",
+      },
+    ],
+    prepTips: [
+      { category: "resource", text: "The NeetCode 150 list covers ~90% of Amazon OA patterns. Focus on the Arrays, Sliding Window, and BFS sections in particular." },
+      { category: "strategy", text: "Solve one question fully before moving to the second - Amazon weights a fully-solved easier question higher than two half-solved hard ones, in my experience and from talking to recruiters." },
+      { category: "strategy", text: "Type out brute-force code first to lock in the I/O, then optimise. Saves 5 minutes when you realise the optimal approach mid-way." },
+      { category: "mindset", text: "If you blank for >2 minutes on a question, switch. The aptitude section is fast to clear and will steady your nerves before you come back." },
+      { category: "resource", text: "Recent Amazon OA archive on the SST drive (last 4 cycles) - patterns repeat about 30% of the time." },
+    ],
+    reflection:
+      "The OA itself isn't unreasonable - what makes it stressful is the proctoring environment, not the problems. Practise on a timer at HackerRank, not just on LeetCode in a comfortable IDE. The thing nobody told me: read all four questions in the first 90 seconds before you start typing. I almost spent 40 minutes on Q1 when Q2 was actually closer to my strengths.\n\nAlso - don't bother with esoteric language features. I switched to C++ from Python the day before because I was paranoid about TLE on the sliding-window problem. Plain idiomatic code in any language is fine; the test-cases aren't designed to punish constants.",
+    topics: ["Arrays", "Sliding Window", "Graphs", "BFS", "Aptitude"],
+  },
+  {
+    id: "exp-017",
+    author: { name: null, batch: "'27", anonymous: true },
+    role: "SDE Intern",
+    round: "Tech 1",
+    year: 2026,
+    outcome: "Offer",
+    submittedAt: "Apr 22, 2026",
+    helpful: 28,
+    views: 489,
+    questions: 3,
+    avgDifficulty: 4,
+    platform: "Amazon Chime",
+    excerpt:
+      "45-min interview. One DSA question (medium-hard, trees), one OOP design question (parking lot scaled down), and 10 minutes of Leadership Principles questions tied back to my resume projects.",
+  },
+  {
+    id: "exp-016",
+    author: { name: "Aarav S.", batch: "'27", anonymous: false },
+    role: "SDE Intern",
+    round: "OA",
+    year: 2026,
+    outcome: "Rejected",
+    submittedAt: "Apr 14, 2026",
+    helpful: 16,
+    views: 312,
+    questions: 2,
+    avgDifficulty: 4,
+    platform: "HackerRank",
+    excerpt:
+      "Both questions were on the harder side - DP on intervals and a string-matching problem. I solved one fully and got partial credit on the second. Didn't make the cut.",
+  },
+  {
+    id: "exp-014",
+    author: { name: "Riya K.", batch: "'27", anonymous: false },
+    role: "SDE Intern",
+    round: "Behavioral",
+    year: 2026,
+    outcome: "Offer",
+    submittedAt: "Apr 09, 2026",
+    helpful: 31,
+    views: 511,
+    questions: 5,
+    avgDifficulty: 2,
+    platform: "Amazon Chime",
+    excerpt:
+      "Pure Leadership Principles round. Bar-raiser interviewer. Five behavioural prompts, each going 2-3 follow-ups deep. STAR format is non-negotiable; have at least 8 stories prepared.",
+  },
+  {
+    id: "exp-011",
+    author: { name: null, batch: "'27", anonymous: true },
+    role: "SDE Intern",
+    round: "Tech 2",
+    year: 2026,
+    outcome: "Awaiting",
+    submittedAt: "Apr 02, 2026",
+    helpful: 11,
+    views: 245,
+    questions: 2,
+    avgDifficulty: 5,
+    platform: "Amazon Chime",
+    excerpt:
+      "Senior engineer on the call. One brutal graph question with optimisation follow-ups, then a 15-min discussion on trade-offs between BFS and Dijkstra for the same problem at different scales.",
+  },
+  {
+    id: "exp-008",
+    author: { name: "Nikhil D.", batch: "'27", anonymous: false },
+    role: "SDE Intern",
+    round: "OA",
+    year: 2025,
+    outcome: "Shortlisted",
+    submittedAt: "Oct 18, 2025",
+    helpful: 14,
+    views: 220,
+    questions: 3,
+    avgDifficulty: 3,
+    platform: "HackerRank",
+    excerpt:
+      "OA pattern from the 2025 cycle. Three questions - one easy, one medium (heaps), one hard (DP). Took the full 90 minutes; cleared with 2 fully solved.",
+  },
+];
+
+export const myPosts: MyPost[] = [
+  {
+    id: "my-019",
+    company: "Amazon",
+    role: "SDE Intern",
+    overallOutcome: "Shortlisted",
+    status: "Under Review",
+    submittedAt: "Today · 9:14 PM",
+    tips: 5,
+    rounds: [
+      { round: "OA", status: "Passed", questions: 4, avgDifficulty: 3, platform: "HackerRank" },
+      { round: "Tech 1", status: "Awaiting", questions: 0, platform: "" },
+    ],
+  },
+  {
+    id: "my-014",
+    company: "Atlassian",
+    role: "SDE Intern",
+    overallOutcome: "Offer",
+    status: "Approved",
+    submittedAt: "Apr 14, 2026",
+    updatedAt: "Apr 28, 2026",
+    tips: 4,
+    views: 142,
+    helpful: 28,
+    rounds: [
+      { round: "OA", status: "Passed", questions: 2, avgDifficulty: 3, platform: "HackerRank" },
+      { round: "Tech 1", status: "Passed", questions: 3, avgDifficulty: 4, platform: "Zoom" },
+      { round: "Tech 2", status: "Passed", questions: 2, avgDifficulty: 4, platform: "Zoom" },
+      { round: "HR", status: "Passed", questions: 0, platform: "Zoom" },
+    ],
+  },
+  {
+    id: "my-009",
+    company: "Microsoft",
+    role: "SDE Intern",
+    overallOutcome: "Awaiting",
+    status: "Approved",
+    submittedAt: "Mar 22, 2026",
+    tips: 3,
+    views: 89,
+    helpful: 14,
+    rounds: [{ round: "OA", status: "Passed", questions: 2, avgDifficulty: 3, platform: "Codility" }],
+  },
+  {
+    id: "my-007",
+    company: "Razorpay",
+    role: "SDE Intern",
+    overallOutcome: "Rejected",
+    status: "Needs Edits",
+    submittedAt: "Mar 10, 2026",
+    tips: 6,
+    opsNote:
+      "Please remove the interviewer's full name in Question 3 and rephrase the bullet about salary range.",
+    rounds: [
+      { round: "OA", status: "Passed", questions: 3, avgDifficulty: 4, platform: "HackerEarth" },
+      { round: "Tech 1", status: "Passed", questions: 2, avgDifficulty: 4, platform: "Zoom" },
+      { round: "Behavioral", status: "Failed", questions: 4, avgDifficulty: 3, platform: "Zoom" },
+    ],
+  },
+  {
+    id: "my-004",
+    company: "Google",
+    role: "STEP Intern",
+    overallOutcome: "Shortlisted",
+    status: "Hidden",
+    submittedAt: "Feb 20, 2026",
+    tips: 3,
+    hiddenAt: "Mar 02, 2026",
+    hiddenReason:
+      "A factual detail about the Tech 1 round structure was disputed by two later interviewees. Please double-check the round count and resubmit.",
+    rounds: [
+      { round: "OA", status: "Passed", questions: 2, avgDifficulty: 4, platform: "Google Hire" },
+      { round: "Tech 1", status: "Passed", questions: 2, avgDifficulty: 4, platform: "Google Meet" },
+    ],
+  },
+  {
+    id: "my-002",
+    company: "Sprinklr",
+    role: "SDE Intern",
+    overallOutcome: "Rejected",
+    status: "Deleted",
+    submittedAt: "Feb 02, 2026",
+    tips: 2,
+    deletedAt: "Feb 03, 2026",
+    rounds: [{ round: "OA", status: "Failed", questions: 2, avgDifficulty: 3, platform: "HackerEarth" }],
+  },
+];
+
+export const opsQueue: OpsQueueItem[] = [
+  {
+    id: "q-001",
+    realAuthor: { name: "Thrishal M.", batch: "'27", email: "thrishal.23bcs10115@sst.scaler.com" },
+    bylineAs: "real",
+    company: "Amazon",
+    role: "SDE Intern",
+    round: "OA",
+    outcome: "Shortlisted",
+    submittedAgo: "12 min ago",
+    questions: 4,
+    tips: 5,
+    hasReflection: true,
+    overview:
+      "Standard Amazon SDE-Intern OA on HackerRank - 90 min for two coding questions and ~20 min for an aptitude / work-style section.",
+  },
+  {
+    id: "q-002",
+    realAuthor: { name: "Aarav S.", batch: "'27", email: "aarav.23bcs10084@sst.scaler.com" },
+    bylineAs: "anonymous",
+    company: "Razorpay",
+    role: "Backend Intern",
+    round: "Tech 2",
+    outcome: "Rejected",
+    submittedAgo: "38 min ago",
+    questions: 3,
+    tips: 3,
+    hasReflection: true,
+    overview:
+      "Senior backend engineer led the round. Hard Dynamic Programming problem followed by a 20-min system design discussion on rate-limiters.",
+  },
+  {
+    id: "q-003",
+    realAuthor: { name: "Riya K.", batch: "'27", email: "riya.23bcs10043@sst.scaler.com" },
+    bylineAs: "real",
+    company: "Atlassian",
+    role: "SDE Intern",
+    round: "Behavioral",
+    outcome: "Offer",
+    submittedAgo: "1 h ago",
+    questions: 5,
+    tips: 4,
+    hasReflection: true,
+    overview:
+      "Values-heavy behavioural round. Five prompts each going 2-3 follow-ups deep on the STAR method. Bar-raiser style interviewer.",
+  },
+  {
+    id: "q-004",
+    realAuthor: { name: "Nikhil D.", batch: "'27", email: "nikhil.23bcs10071@sst.scaler.com" },
+    bylineAs: "anonymous",
+    company: "Walmart Global Tech",
+    role: "SDE Intern",
+    round: "HR",
+    outcome: "Offer",
+    submittedAgo: "2 h ago",
+    questions: 4,
+    tips: 2,
+    hasReflection: false,
+    overview:
+      "Compensation discussion + relocation logistics + role-fit. Friendly tone. Negotiated stipend up 8% mentioning competing offer.",
+  },
+  {
+    id: "q-005",
+    realAuthor: { name: "Priya R.", batch: "'27", email: "priya.23bcs10112@sst.scaler.com" },
+    bylineAs: "real",
+    company: "Microsoft",
+    role: "SDE Intern",
+    round: "OA",
+    outcome: "Awaiting",
+    submittedAgo: "3 h ago",
+    questions: 3,
+    tips: 4,
+    hasReflection: true,
+    overview:
+      "Codility-hosted OA, 70 min. Two questions - one greedy / interval scheduling, one heap-based. Both medium difficulty.",
+  },
+];
+
+// Map a final outcome onto the per-round status vocabulary.
+export function outcomeToStatus(outcome?: Outcome): RoundStatus {
+  if (outcome === "Rejected" || outcome === "Withdrew") return "Failed";
+  if (outcome === "Awaiting") return "Awaiting";
+  return "Passed";
+}
+
+// Resolve a card-level avgDifficulty whether single- or multi-round.
+export function avgDifficultyOf(e: Experience): number {
+  if (e.rounds && e.rounds.length) {
+    const diffs = e.rounds
+      .map((r) => r.avgDifficulty)
+      .filter((d): d is number => typeof d === "number");
+    return diffs.length ? diffs.reduce((s, d) => s + d, 0) / diffs.length : 0;
+  }
+  return e.avgDifficulty || 0;
+}

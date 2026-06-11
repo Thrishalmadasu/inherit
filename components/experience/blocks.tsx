@@ -16,13 +16,21 @@ export function QuestionCard({ q }: { q: QuestionDetail }) {
           {q.topic}
         </span>
         <span className="ml-auto flex items-center gap-2.5 text-xs text-fg-3">
-          <Difficulty value={q.difficulty} />
-          <span className="size-[3px] rounded-full bg-fg-4" />
-          <span className="inline-flex items-center gap-1">
-            <Icon.clock className="size-3" /> {q.time}
-          </span>
-          <span className="size-[3px] rounded-full bg-fg-4" />
-          <span>{q.platform}</span>
+          {q.difficulty > 0 && <Difficulty value={q.difficulty} />}
+          {q.time && (
+            <>
+              <span className="size-[3px] rounded-full bg-fg-4" />
+              <span className="inline-flex items-center gap-1">
+                <Icon.clock className="size-3" /> {q.time}
+              </span>
+            </>
+          )}
+          {q.platform && (
+            <>
+              <span className="size-[3px] rounded-full bg-fg-4" />
+              <span>{q.platform}</span>
+            </>
+          )}
         </span>
       </div>
       <p className="mt-1.5 text-[13.5px] leading-[1.6] text-fg-2">{q.summary}</p>

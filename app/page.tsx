@@ -4,12 +4,10 @@ import { HeroSearch } from "@/components/hero-search";
 import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
-import {
-  companies,
-  experiences,
-  type CompanyListItem,
-  type Experience,
-} from "@/lib/mock/data";
+import { latestExperiences, listCompanies } from "@/lib/db/queries";
+import type { CompanyListItem, Experience } from "@/lib/mock/data";
+
+export const dynamic = "force-dynamic"; // always reflect the latest DB rows
 
 const QUICK = [
   { q: "Amazon", label: "Amazon" },
@@ -25,7 +23,12 @@ function timeAgo(days: number) {
   return `${Math.round(days / 30)} months ago`;
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const [companies, experiences] = await Promise.all([
+    listCompanies(),
+    latestExperiences(6),
+  ]);
+
   return (
     <>
       <TopNav showSearch={false} />
@@ -42,7 +45,7 @@ export default function DashboardPage() {
             Every OA, interview, and offer your batchmates have been through —
             searchable in one place.
           </p>
-          <HeroSearch />
+          <HeroSearch companies={companies} experiences={experiences} />
           <div className="mt-[18px] flex flex-wrap items-center justify-center gap-2">
             <span className="text-xs text-fg-3">Try</span>
             {QUICK.map((c) => (
@@ -83,8 +86,8 @@ export default function DashboardPage() {
         {/* Latest across SST */}
         <Section title="Latest across SST" href="/feed">
           <div className="flex flex-col gap-2">
-            {experiences.slice(0, 6).map((e) => (
-              <FeedRow key={e.id} e={e} companyName="Amazon" />
+            {experiences.map((e) => (
+              <FeedRow key={e.id} e={e} companyName={e.company ?? "—"} />
             ))}
           </div>
         </Section>
@@ -142,9 +145,11 @@ function FeedRow({ e, companyName }: { e: Experience; companyName: string }) {
           <b className="font-semibold">{companyName}</b>
           <span className="font-normal text-fg-3">·</span>
           <span className="text-fg-2">
-            {e.role} · {e.round}
+            {e.role} · {e.round ?? e.rounds?.map((r) => r.round).join(" → ")}
           </span>
-          {e.outcome && <OutcomePill outcome={e.outcome} />}
+          {(e.outcome ?? e.overallOutcome) && (
+            <OutcomePill outcome={(e.outcome ?? e.overallOutcome)!} />
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-fg-3">
           <Author author={e.author} />

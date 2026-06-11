@@ -5,10 +5,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
-import { companies, experiences } from "@/lib/mock/data";
+import type { CompanyListItem, Experience } from "@/lib/mock/data";
 
 // Large landing search with instant autocomplete (companies + experiences).
-export function HeroSearch() {
+export function HeroSearch({
+  companies,
+  experiences,
+}: {
+  companies: CompanyListItem[];
+  experiences: Experience[];
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,11 +30,11 @@ export function HeroSearch() {
           (e) =>
             e.role.toLowerCase().includes(t) ||
             (e.round ?? "").toLowerCase().includes(t) ||
-            "amazon".includes(t),
+            (e.company ?? "").toLowerCase().includes(t),
         )
         .slice(0, 3),
     };
-  }, [q]);
+  }, [q, companies, experiences]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -106,17 +112,19 @@ export function HeroSearch() {
                   onMouseDown={(ev) => ev.preventDefault()}
                   className="flex items-center gap-3 rounded-[9px] px-3 py-2.5 text-sm text-fg transition-colors hover:bg-bg-2"
                 >
-                  <PopLogo>A</PopLogo>
+                  <PopLogo>{(e.company ?? "A")[0]}</PopLogo>
                   <span>
                     <div className="font-medium">
-                      {e.role} · {e.round}
+                      {e.role} · {e.round ?? e.rounds?.[0]?.round}
                     </div>
                     <div className="text-[11.5px] text-fg-3">
-                      Amazon · {e.submittedAt}
+                      {e.company ?? "Amazon"} · {e.submittedAt}
                     </div>
                   </span>
                   <span className="ml-auto shrink-0">
-                    {e.outcome && <OutcomePill outcome={e.outcome} />}
+                    {(e.outcome ?? e.overallOutcome) && (
+                      <OutcomePill outcome={(e.outcome ?? e.overallOutcome)!} />
+                    )}
                   </span>
                 </Link>
               ))}

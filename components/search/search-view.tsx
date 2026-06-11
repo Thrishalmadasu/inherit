@@ -7,7 +7,7 @@ import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { companies, experiences } from "@/lib/mock/data";
+import type { CompanyListItem, Experience } from "@/lib/mock/data";
 
 const RECENT_TERMS = ["Amazon", "SDE Intern", "Behavioural", "OA"];
 
@@ -27,7 +27,15 @@ function highlight(text: string, q: string): ReactNode {
   );
 }
 
-export function SearchView({ initialQ }: { initialQ: string }) {
+export function SearchView({
+  initialQ,
+  companies,
+  experiences,
+}: {
+  initialQ: string;
+  companies: CompanyListItem[];
+  experiences: Experience[];
+}) {
   const [q, setQ] = useState(initialQ);
   const [tab, setTab] = useState<"all" | "companies" | "experiences">("all");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,11 +54,13 @@ export function SearchView({ initialQ }: { initialQ: string }) {
       experiences: experiences.filter(
         (e) =>
           (e.role && e.role.toLowerCase().includes(t)) ||
-          "amazon".includes(t) ||
-          (e.round && e.round.toLowerCase().includes(t)),
+          (e.company ?? "").toLowerCase().includes(t) ||
+          (e.rounds ?? [{ round: e.round }]).some((r) =>
+            (r.round ?? "").toLowerCase().includes(t),
+          ),
       ),
     };
-  }, [q]);
+  }, [q, companies, experiences]);
 
   const totals = {
     all: results.companies.length + results.experiences.length,
@@ -159,14 +169,17 @@ export function SearchView({ initialQ }: { initialQ: string }) {
             {show("experiences") && results.experiences.length > 0 && (
               <SearchSection title="Experiences" href="/feed">
                 {results.experiences.slice(0, tab === "all" ? 4 : 50).map((e) => (
-                  <Row key={e.id} href={`/experiences/${e.id}`} logo="A">
+                  <Row key={e.id} href={`/experiences/${e.id}`} logo={(e.company ?? "A")[0]}>
                     <div className="mb-1 flex flex-wrap items-center gap-2 text-sm font-medium">
-                      <b className="font-semibold">Amazon</b>
+                      <b className="font-semibold">{e.company ?? "Amazon"}</b>
                       <span className="font-normal text-fg-3">·</span>
                       <span className="text-fg-2">
-                        {highlight(e.role, term)} · {highlight(e.round ?? "", term)}
+                        {highlight(e.role, term)} ·{" "}
+                        {highlight(e.round ?? e.rounds?.[0]?.round ?? "", term)}
                       </span>
-                      {e.outcome && <OutcomePill outcome={e.outcome} />}
+                      {(e.outcome ?? e.overallOutcome) && (
+                        <OutcomePill outcome={(e.outcome ?? e.overallOutcome)!} />
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-fg-3">
                       <Author author={e.author} />

@@ -6,26 +6,29 @@ import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
+import { Funnel } from "@/components/ui/funnel";
 import { TopicsList } from "@/components/ui/topics-list";
 import { Select } from "@/components/ui/select";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { company, experiences, avgDifficultyOf } from "@/lib/mock/data";
+import { avgDifficultyOf } from "@/lib/mock/data";
+import type { CompanyPageData } from "@/lib/db/queries";
 
-export function CompanyView() {
+export function CompanyView({ company }: { company: CompanyPageData }) {
+  const experiences = company.experiences;
   const [roleFilter, setRoleFilter] = useState("All roles");
   const [roundFilter, setRoundFilter] = useState("All rounds");
   const [sort, setSort] = useState("recent");
 
   const roles = useMemo(
     () => ["All roles", ...new Set(experiences.map((e) => e.role))],
-    [],
+    [experiences],
   );
   const rounds = useMemo(
     () => [
       "All rounds",
       ...Object.keys(company.breakdown).filter((k) => company.breakdown[k] > 0),
     ],
-    [],
+    [company.breakdown],
   );
 
   const filtered = useMemo(() => {
@@ -43,15 +46,21 @@ export function CompanyView() {
     else if (sort === "views")
       list = list.sort((a, b) => (b.views || 0) - (a.views || 0));
     return list;
-  }, [roleFilter, roundFilter, sort]);
+  }, [experiences, roleFilter, roundFilter, sort]);
 
   const totalBeh = (company.breakdown.Behavioral || 0) + (company.breakdown.HR || 0);
   const totalTech =
     (company.breakdown["Tech 1"] || 0) +
     (company.breakdown["Tech 2"] || 0) +
     (company.breakdown["System Design"] || 0);
-  const rolesMax = Math.max(...company.roles.map((r) => r.count));
+  const rolesMax = Math.max(1, ...company.roles.map((r) => r.count));
   const filtersActive = roleFilter !== "All roles" || roundFilter !== "All rounds";
+  const lastLabel =
+    company.lastDays === 0
+      ? "today"
+      : company.lastDays === 1
+        ? "1 day ago"
+        : `${company.lastDays} days ago`;
 
   return (
     <>
@@ -83,7 +92,7 @@ export function CompanyView() {
               <span className="size-[3px] rounded-full bg-fg-4" />
               <span>{company.roles.map((r) => r.name).join(" · ")}</span>
               <span className="size-[3px] rounded-full bg-fg-4" />
-              <span>Last submission 2 days ago</span>
+              <span>Last submission {lastLabel}</span>
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -104,8 +113,8 @@ export function CompanyView() {
           <StatCard
             label="Online Assessment"
             icon={Icon.code}
-            value={company.breakdown.OA}
-            sub="Latest from 2 days ago"
+            value={company.breakdown.OA ?? 0}
+            sub={`Latest from ${lastLabel}`}
           />
           <StatCard
             label="Technical rounds"
@@ -120,6 +129,21 @@ export function CompanyView() {
             sub="Leadership Principles heavy"
           />
         </div>
+
+        {/* Funnel — how far experiences progressed through the pipeline */}
+        {company.commonPath.length > 0 && (
+          <div className="mb-3.5 rounded-lg border border-border bg-surface px-5 pb-5 pt-[18px]">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-[13px] font-semibold tracking-[-0.005em] text-fg">
+                Common path
+              </div>
+              <div className="text-[11.5px] text-fg-3">
+                How many experiences reached each stage
+              </div>
+            </div>
+            <Funnel path={company.commonPath} counts={company.pathFunnel} />
+          </div>
+        )}
 
         {/* Roles + topics */}
         <div className="mb-7 grid gap-3.5 md:grid-cols-[1.2fr_1fr]">

@@ -10,20 +10,20 @@ import { Difficulty } from "@/components/ui/primitives";
 import { QuestionCard, PrepTip, Section } from "@/components/experience/blocks";
 import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
-import { company, experiences, type Experience } from "@/lib/mock/data";
+import type { Experience } from "@/lib/mock/data";
 
-const BASE_HELPFUL = 23;
-
-export function ExperienceView({ id }: { id: string }) {
-  const exp =
-    experiences.find((e) => e.id === id && e.questionsList) ||
-    experiences.find((e) => e.questionsList) ||
-    experiences[0];
-  const related = experiences.filter((e) => e.id !== exp.id).slice(0, 4);
-
+export function ExperienceView({
+  exp,
+  related,
+  company,
+}: {
+  exp: Experience;
+  related: Experience[];
+  company: { name: string; slug: string; industry: string };
+}) {
   const [saved, setSaved] = useState(false);
   const [helpful, setHelpful] = useState(false);
-  const helpfulCount = BASE_HELPFUL + (helpful ? 1 : 0);
+  const helpfulCount = (exp.helpful ?? 0) + (helpful ? 1 : 0);
 
   const toggleSave = () => {
     setSaved((s) => {

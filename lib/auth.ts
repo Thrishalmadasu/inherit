@@ -2,8 +2,9 @@
 // Clerk owns sessions; our `users` table stays the system of record for
 // authorship/roles so swapping the auth vendor never touches the data model.
 import { clerkClient, currentUser } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
-import { batchYearFromEmail } from "@/lib/user-display";
+import { batchYearFromEmail, cleanPersonName } from "@/lib/user-display";
 
 export const SST_DOMAIN = "sst.scaler.com";
 
@@ -40,12 +41,21 @@ export async function ensureDbUser(): Promise<AuthGate> {
   const isOps = isOpsEmail(email);
   if (meta.dbUserId && meta.isOps === isOps) return { status: "ok", email };
 
-  const name = user.fullName?.trim() || shortFromEmail(email);
-  const [row] = await db
+  // Name is written on first insert only — our `users` table is the system of
+  // record, and Google profile names are unreliable ("THRISHAL ."). Existing
+  // rows (seeded or Ops-curated) keep their name.
+  const name = cleanPersonName(user.fullName) || shortFromEmail(email);
+  const [inserted] = await db
     .insert(s.users)
     .values({ sstEmail: email, name, batchYear: batchYearFromEmail(email) })
-    .onConflictDoUpdate({ target: s.users.sstEmail, set: { name } })
+    .onConflictDoNothing({ target: s.users.sstEmail })
     .returning({ id: s.users.id });
+  const row =
+    inserted ??
+    (await db
+      .select({ id: s.users.id })
+      .from(s.users)
+      .where(eq(s.users.sstEmail, email)))[0];
 
   const client = await clerkClient();
   await client.users.updateUserMetadata(user.id, {

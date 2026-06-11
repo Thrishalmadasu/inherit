@@ -13,22 +13,34 @@ export function batchLabelFromEmail(email?: string | null): string {
   return year ? `'${String(year).slice(-2)}` : "";
 }
 
+// Google profile names are often junk ("THRISHAL .", "RIYA K 23BCS10043"):
+// drop parts that aren't pure words (lone punctuation, roll numbers) and
+// de-SHOUT all-caps parts.
+export function cleanPersonName(raw?: string | null): string {
+  return (raw ?? "")
+    .split(/\s+/)
+    .filter((p) => /\p{L}/u.test(p) && !/\d/.test(p))
+    .map((p) => (p === p.toUpperCase() ? p[0] + p.slice(1).toLowerCase() : p))
+    .join(" ");
+}
+
+function nameParts(fullName?: string | null, email?: string | null): string[] {
+  const name = cleanPersonName(fullName) || (email ?? "").split("@")[0].split(".")[0];
+  return name ? name.split(/\s+/).map((p) => p[0].toUpperCase() + p.slice(1)) : [];
+}
+
 // "Thrishal Madasu" → "Thrishal M." — the byline style used app-wide.
 // Falls back to the email's first name segment when Clerk has no name.
 export function shortName(fullName?: string | null, email?: string | null): string {
-  const fromEmail = (email ?? "").split("@")[0].split(".")[0];
-  const name = fullName?.trim() || fromEmail;
-  if (!name) return "Student";
-  const parts = name.split(/\s+/);
-  const first = parts[0][0].toUpperCase() + parts[0].slice(1);
-  return parts.length > 1 ? `${first} ${parts[parts.length - 1][0].toUpperCase()}.` : first;
+  const parts = nameParts(fullName, email);
+  if (!parts.length) return "Student";
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
 }
 
 export function initialsOf(fullName?: string | null, email?: string | null): string {
-  const name = fullName?.trim() || (email ?? "").split("@")[0].split(".")[0];
-  if (!name) return "?";
-  const parts = name.split(/\s+/);
+  const parts = nameParts(fullName, email);
+  if (!parts.length) return "?";
   return parts.length > 1
     ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase();
+    : parts[0].slice(0, 2).toUpperCase();
 }

@@ -10,7 +10,7 @@ import { Difficulty } from "@/components/ui/primitives";
 import { QuestionCard, PrepTip, Section } from "@/components/experience/blocks";
 import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
-import type { Experience } from "@/lib/mock/data";
+import type { Experience } from "@/lib/types";
 
 export function ExperienceView({
   exp,

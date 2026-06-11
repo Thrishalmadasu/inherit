@@ -2,8 +2,8 @@
 // a student-facing experience is approved AND not author-deleted AND not
 // Ops-hidden. Every read path goes through `visibleExp`.
 //
-// Rows are mapped to the existing card/detail shapes (lib/mock/data types) so
-// the client views stay unchanged — that DTO becomes lib/types in Phase 2.
+// Rows are mapped to the shared DTO shapes (lib/types.ts) so the client
+// views stay unchanged.
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import type {
@@ -12,7 +12,7 @@ import type {
   PrepTip,
   QuestionDetail,
   RoundEntry,
-} from "@/lib/mock/data";
+} from "@/lib/types";
 
 const visibleExp = and(
   eq(s.experiences.reviewStatus, "approved"),

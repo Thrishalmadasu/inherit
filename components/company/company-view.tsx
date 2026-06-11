@@ -10,7 +10,7 @@ import { Funnel } from "@/components/ui/funnel";
 import { TopicsList } from "@/components/ui/topics-list";
 import { Select } from "@/components/ui/select";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { avgDifficultyOf } from "@/lib/mock/data";
+import { avgDifficultyOf } from "@/lib/types";
 import type { CompanyPageData } from "@/lib/db/queries";
 
 export function CompanyView({ company }: { company: CompanyPageData }) {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
-import type { CompanyListItem, Experience } from "@/lib/mock/data";
+import type { CompanyListItem, Experience } from "@/lib/types";
 
 // Large landing search with instant autocomplete (companies + experiences).
 export function HeroSearch({

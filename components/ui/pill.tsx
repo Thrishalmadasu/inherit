@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/icons";
-import type { Outcome, RoundStatus } from "@/lib/mock/data";
+import type { Outcome, RoundStatus } from "@/lib/types";
 
 // ─── Base pill ─────────────────────────────────────────────────────────────
 const PILL_BASE =

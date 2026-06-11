@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-12** after the gated-alpha build night.
+> Living document. Last updated **2026-06-12** after Session 1 (Clerk auth).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -27,14 +27,14 @@ next person interviewing at a company walks in with the batch's collective intel
 | Read paths (dashboard, companies, company, experience, feed, search) | ✅ **Real DB** | funnel + topics computed from rows |
 | Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ UI complete | **submits nowhere yet** — draft in localStorage |
 | My Posts / Under Review / Ops queue / Ops users | ✅ UI complete | **on mock data**; actions are toast-only |
-| Auth (Clerk, `@sst.scaler.com` gate) | ⏳ Not started | next milestone; app is currently OPEN |
+| Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | every route protected; users mirrored to DB; `/ops` email-gated (see §7) |
 | Write loop (submit → moderate → publish) | ⏳ Not started | Server Actions, after auth |
 | Helpful votes / views / saves (persisted) | ⏳ Not started | UI exists; localStorage/optimistic only |
 | Invite-to-share (CSV outreach) | ⏳ Placeholder tab | full spec in PRD §7 Flow F |
 | Email (Resend) + L&D Sheets sync | ⏳ Not started | last; behind interfaces per plan |
 
-**The one-sentence status:** *everything a reader touches is real; everything a writer
-touches is a working UI waiting for auth + Server Actions.*
+**The one-sentence status:** *the app is gated to SST accounts and every reader surface
+is real; everything a writer touches is a working UI waiting for Server Actions.*
 
 ---
 
@@ -47,7 +47,7 @@ touches is a working UI waiting for auth + Server Actions.*
 | ORM | **Drizzle** + drizzle-kit | Type-safe end-to-end, SQL-transparent, no runtime engine |
 | Styling | **Tailwind 4** with design tokens extracted from the prototype CSS | Utility classes driven by the token system in `app/globals.css` `@theme` |
 | UI behavior | **Radix UI** (so far: Dialog) wrapped in `components/ui/*` | Unstyled a11y primitives; we bring the look |
-| Auth (planned) | **Clerk**, domain-gated to `@sst.scaler.com` | Domain restriction is one setting; no auth code to own |
+| Auth | **Clerk** (`@clerk/nextjs` v7), domain-gated to `@sst.scaler.com` | Domain restriction is one setting; no auth code to own (details: §7) |
 | Hosting | **Vercel** (project `inherit`) | Zero-config Next deploys, preview per PR |
 
 **Versions:** Next 16.2.7 · React 19 · Tailwind 4 · Drizzle latest · Node 24.
@@ -64,8 +64,11 @@ touches is a working UI waiting for auth + Server Actions.*
 
 ```
 web/
+├─ proxy.ts                   # ★ route protection (Next 16 middleware) — see §7
 ├─ app/                       # routes (App Router)
 │  ├─ page.tsx                # Dashboard — async server component (DB)
+│  ├─ layout.tsx              # ClerkProvider + domain gate + user mirror (§7)
+│  ├─ sign-in|sign-up/        # Clerk catch-all routes, token-themed
 │  ├─ companies/page.tsx      #   + [slug]/page.tsx — DB-backed
 │  ├─ experiences/[id]/page.tsx  # DB-backed, 404s on unknown id
 │  ├─ feed/page.tsx           # DB-backed
@@ -73,18 +76,23 @@ web/
 │  ├─ share/page.tsx          # 5-step form (?edit=<id>) — localStorage drafts
 │  ├─ me/page.tsx             # My Posts — MOCK
 │  ├─ under-review/page.tsx   # author preview — MOCK
-│  └─ ops/                    # layout + queue / invite / users — MOCK
+│  └─ ops/                    # layout = OPS_EMAILS server gate; queue/invite/users — MOCK
 ├─ components/
 │  ├─ ui/                     # primitive layer: pill, button, chip, stat-card,
 │  │                          #   funnel, topics-list, experience-card, select, modal
 │  ├─ share/                  # share-form, round-editor (block editor), tag-input
+│  ├─ ops/ops-shell.tsx       # Ops chrome (client half of the gated layout)
 │  ├─ company|companies|experience|feed|search/  # per-screen client views
 │  ├─ top-nav.tsx, user-menu.tsx, hero-search.tsx, icons.tsx
+│  ├─ restricted-screen.tsx   # non-SST account blocked screen (§7)
 ├─ lib/
+│  ├─ types.ts                # ★ shared DTO types + card helpers (see §6)
+│  ├─ auth.ts                 # ensureDbUser (Clerk→users mirror) + OPS_EMAILS gate
+│  ├─ user-display.ts         # shortName/initials/batch-from-email helpers
 │  ├─ db/schema.ts            # ★ THE data model — 16 tables + enums
 │  ├─ db/index.ts             # Drizzle client (Neon HTTP driver)
 │  ├─ db/queries.ts           # ★ read queries + THE visibility invariant
-│  ├─ mock/data.ts            # Phase-0 mock + shared DTO types (see §6)
+│  ├─ mock/data.ts            # Phase-0 mock VALUES only (types moved to lib/types.ts)
 │  ├─ share-form.ts           # curated taxonomy, form constants, completion %
 │  ├─ draft.ts                # localStorage draft persistence
 │  ├─ cn.ts, toast.ts
@@ -158,16 +166,57 @@ Neon Postgres ──> lib/db/queries.ts ──> DTO (Experience/CompanyListItem 
   (`toCard`, `toDetail` in queries.ts). Funnel = experiences counted per round label,
   ordered by average position. Top topics = tag frequency across blocks. All computed
   per request (dataset is small; cache later if needed).
-- **The DTO types currently live in `lib/mock/data.ts`** (they began as mock types).
-  The mock file therefore serves two roles: (a) type definitions used everywhere,
-  (b) mock *values* still consumed by `/me`, `/under-review`, `/ops`, and the share
-  form's edit-prefill. **First refactor for the next session: move the types to
-  `lib/types.ts`**, leaving mock values only where screens are still mock.
-- Read routes set `export const dynamic = "force-dynamic"` so pages always reflect the DB.
+- **The DTO types live in `lib/types.ts`** (moved out of `lib/mock/data.ts` in
+  Session 1, along with the `outcomeToStatus`/`avgDifficultyOf` card helpers).
+  `lib/mock/data.ts` now holds only mock *values*, still consumed by `/me`,
+  `/under-review`, `/ops`, and the share form's edit-prefill — each value dies
+  when its screen goes real in Session 2.
+- Read routes set `export const dynamic = "force-dynamic"` so pages always reflect the DB
+  (now redundant-but-harmless: the auth check in the root layout makes every route dynamic).
 
 ---
 
-## 7. What is mock vs real — the exact seam (critical when extending)
+## 7. Auth (Clerk) — how the gate works
+
+Shipped in Session 1. Four layers, outermost first:
+
+1. **`proxy.ts`** (repo root — Next 16's renamed middleware; it must sit *next to*
+   `app/`, not inside it). `clerkMiddleware` + an explicit signed-out redirect to
+   `/sign-in` for every route except `/sign-in(.*)` and `/sign-up(.*)`.
+   ⚠️ Deliberately **not** `auth.protect()` — in Next 16 proxies it resolves the
+   sign-in URL from env at runtime and silently redirects to the *current* URL when
+   unset ([clerk/javascript#8302](https://github.com/clerk/javascript/issues/8302)).
+2. **Clerk dashboard restrictions** — the real SST-only gate. Google-only sign-in +
+   `sst.scaler.com` domain allowlist (Configure → Restrictions). Lives in the Clerk
+   app `verified-doberman-18`, not in code.
+3. **Code-level domain backstop** — `ensureDbUser()` in `lib/auth.ts`, called from
+   the root layout. A signed-in non-`@sst.scaler.com` account gets
+   `components/restricted-screen.tsx` (sign-out + retry) instead of the app, even if
+   the dashboard allowlist is misconfigured. Never trust one layer.
+4. **`/ops/*` gate** — `app/ops/layout.tsx` is a server component checking the
+   signed-in email against the `OPS_EMAILS` env allowlist (comma-separated);
+   non-ops users are redirected to `/`. DB-backed roles replace this in Session 2.
+   The "Switch to Ops view" menu item is hidden client-side via Clerk
+   `publicMetadata.isOps` (cosmetic only — the server gate is authoritative).
+
+**User mirroring (the vendor seam, §3):** on first authenticated request,
+`ensureDbUser()` upserts the Clerk user into our `users` table keyed by `sst_email`
+(name from Google, `batch_year` parsed from the email's `23bcs`-style segment), then
+stamps the DB id into Clerk `publicMetadata.dbUserId` so later requests skip the DB
+write. Authorship/roles always reference *our* `users.id` — swapping auth vendors
+never touches the data model. If `OPS_EMAILS` changes, the metadata re-syncs on the
+user's next request.
+
+**Client-side user display:** `useUser()` + the pure helpers in
+`lib/user-display.ts` (`shortName` → "Thrishal M.", `initialsOf`,
+`batchLabelFromEmail` → "'27"). Used by the top-nav user menu and the share form's
+identity step. Sign-out goes through `useClerk().signOut({ redirectUrl: "/sign-in" })`.
+
+**Styling:** Clerk components are themed once via the `appearance.variables` prop on
+`<ClerkProvider>` in `app/layout.tsx`, with direct values mirroring the
+`globals.css` tokens (Clerk derives shades via `color-mix`, so `var()` refs are out).
+
+## 8. What is mock vs real — the exact seam (critical when extending)
 
 | Surface | Data | Actions |
 |---|---|---|
@@ -180,7 +229,7 @@ Neon Postgres ──> lib/db/queries.ts ──> DTO (Experience/CompanyListItem 
 
 ---
 
-## 8. Running, developing, deploying
+## 9. Running, developing, deploying
 
 ```bash
 cd web
@@ -192,8 +241,16 @@ npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx vercel deploy --prod --yes   # deploy
 ```
 
-- **Env:** `web/.env.local` holds `DATABASE_URL` (gitignored). Vercel has it as an
-  encrypted production env var. New secrets: add to both.
+- **Env:** `web/.env.local` (gitignored) and Vercel production env vars — always both:
+  | Var | What |
+  |---|---|
+  | `DATABASE_URL` | Neon Postgres connection string |
+  | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_test_…` for now) |
+  | `CLERK_SECRET_KEY` | Clerk backend key (`sk_test_…` for now) |
+  | `OPS_EMAILS` | comma-separated `/ops` allowlist (interim, until DB roles) |
+
+  Still on Clerk **dev-instance** keys — before real launch, create the Clerk
+  production instance and swap both keys.
 - **Accounts** (all under thrishalmadasu's GitHub): Vercel (`inherit`), Neon
   (project `inherit`, ap-southeast-1). Plan: transfer to an SST org before batch handover.
 - Deploys are manual via CLI right now. **Recommended next:** push the repo to GitHub and
@@ -201,12 +258,11 @@ npx vercel deploy --prod --yes   # deploy
 
 ---
 
-## 9. Roadmap from here (the order matters)
+## 10. Roadmap from here (the order matters)
 
-1. **Clerk auth** (~1 evening): signup → keys in env, `<ClerkProvider>` in layout,
-   `app/proxy.ts` route protection, `@sst.scaler.com` allowlist, real user in nav +
-   share-form byline, ops gating (email allowlist first, DB roles after).
-   Also: mirror users into `users` table on first sign-in (keeps the vendor seam).
+1. ~~**Clerk auth**~~ ✅ **Done (Session 1)** — see §7. One manual item may remain:
+   confirm the `sst.scaler.com` domain allowlist is set in the Clerk dashboard
+   (Configure → Restrictions); the code backstop covers the gap meanwhile.
 2. **Write loop** (the big one): Zod schemas for the share form → Server Action
    `submitExperience` (insert experience + rounds + blocks + tag links + tips,
    status `under_review`) → Ops queue reads real pending rows (FIFO by `created_at`)
@@ -228,12 +284,13 @@ npx vercel deploy --prod --yes   # deploy
 
 ---
 
-## 10. For the product team — decisions already locked
+## 11. For the product team — decisions already locked
 
 - **Helpful-only voting** (no "Not helpful") — decided 2026-06-12, PRD updated everywhere.
 - **Every post reviewed before publish; FIFO queue, no fast-tracking** (PRD §10).
 - **Anonymity:** default real name; per-post anonymous toggle; Ops always sees identity.
-- **SST-only, permanently** — will be enforced by Clerk domain allowlist + `robots.txt`.
+- **SST-only, permanently** — enforced since Session 1 (Clerk allowlist + code
+  backstop, §7); `robots.txt` still TODO.
 - **Soft-delete forever** (author restore any time) vs **Ops hide with required reason**
   (logged, reversible) — two separate mechanisms by design.
 - **Block-composed rounds** — a round can mix coding/system-design/behavioral/open blocks;
@@ -242,7 +299,7 @@ npx vercel deploy --prod --yes   # deploy
   (34 seeded). This is the contract that keeps Top-topics analytics and the future
   L&D sheet clean. *Open question owner: who curates the seed list (PRD §15 Q5).*
 
-## 11. Known quirks
+## 12. Known quirks
 - `<body suppressHydrationWarning>` in `app/layout.tsx` — tolerates browser-extension
   attribute injection (e.g. Bitdefender's `bis_register`). Scoped to body attributes only.
 - Local dev port is auto-assigned because Docker

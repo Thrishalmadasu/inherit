@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import type { Author as AuthorType } from "@/lib/mock/data";
+import type { Author as AuthorType } from "@/lib/types";
 
 // ─── Difficulty bars 1–5 ───────────────────────────────────────────────────
 export function Difficulty({ value }: { value: number }) {

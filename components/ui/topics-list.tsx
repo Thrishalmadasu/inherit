@@ -1,4 +1,4 @@
-import type { TopicCount } from "@/lib/mock/data";
+import type { TopicCount } from "@/lib/types";
 
 export function TopicsList({ topics }: { topics: TopicCount[] }) {
   const max = Math.max(...topics.map((t) => t.count));

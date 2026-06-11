@@ -3,7 +3,7 @@
 import { Icon } from "@/components/icons";
 import { Difficulty } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import type { PrepTip as PrepTipType, QuestionDetail } from "@/lib/mock/data";
+import type { PrepTip as PrepTipType, QuestionDetail } from "@/lib/types";
 
 export function QuestionCard({ q }: { q: QuestionDetail }) {
   return (

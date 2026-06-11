@@ -14,7 +14,8 @@ import {
   relativeTime,
   type ShareDraft,
 } from "@/lib/draft";
-import { myPosts, type MyPost, type ReviewStatus } from "@/lib/mock/data";
+import { myPosts } from "@/lib/mock/data";
+import type { MyPost, ReviewStatus } from "@/lib/types";
 
 const TABS = [
   { id: "all", label: "All" },

@@ -7,7 +7,7 @@ import {
   type Experience,
   outcomeToStatus,
   type RoundStatus,
-} from "@/lib/mock/data";
+} from "@/lib/types";
 
 // Unified card for the Company page + All Experiences feed. Accepts either the
 // single-round legacy shape (e.round/e.outcome) or the multi-round shape

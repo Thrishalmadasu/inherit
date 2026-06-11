@@ -5,7 +5,7 @@ import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
 import { latestExperiences, listCompanies } from "@/lib/db/queries";
-import type { CompanyListItem, Experience } from "@/lib/mock/data";
+import type { CompanyListItem, Experience } from "@/lib/types";
 
 export const dynamic = "force-dynamic"; // always reflect the latest DB rows
 

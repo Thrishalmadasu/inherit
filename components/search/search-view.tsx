@@ -7,7 +7,7 @@ import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import type { CompanyListItem, Experience } from "@/lib/mock/data";
+import type { CompanyListItem, Experience } from "@/lib/types";
 
 const RECENT_TERMS = ["Amazon", "SDE Intern", "Behavioural", "OA"];
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { Chip } from "@/components/ui/primitives";
-import type { CompanyListItem } from "@/lib/mock/data";
+import type { CompanyListItem } from "@/lib/types";
 
 function latest(days: number) {
   if (days === 0) return "today";

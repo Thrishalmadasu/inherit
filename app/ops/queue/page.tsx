@@ -8,7 +8,8 @@ import { OutcomePill, Pill, RoundPill } from "@/components/ui/pill";
 import { Chip } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
-import { experiences, opsQueue, type OpsQueueItem } from "@/lib/mock/data";
+import { experiences, opsQueue } from "@/lib/mock/data";
+import type { OpsQueueItem } from "@/lib/types";
 
 type View = "all" | "anonymous" | "published";
 

@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useClerk, useUser } from "@clerk/nextjs";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
+import { batchLabelFromEmail, initialsOf, shortName } from "@/lib/user-display";
 
 const ITEM =
   "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-[13px] font-medium transition-colors [&_svg]:size-3.5";
@@ -11,6 +13,8 @@ const ITEM =
 export function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
   useEffect(() => {
     if (!open) return;
@@ -20,6 +24,15 @@ export function UserMenu() {
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
+
+  // The proxy guarantees a session on every app route; this only blanks
+  // during the initial client load.
+  if (!user) return <div className="h-9 w-[140px]" aria-hidden />;
+
+  const email = user.primaryEmailAddress?.emailAddress ?? "";
+  const name = shortName(user.fullName, email);
+  const batch = batchLabelFromEmail(email);
+  const isOps = user.publicMetadata?.isOps === true;
 
   return (
     <div className="relative" ref={ref}>
@@ -32,12 +45,12 @@ export function UserMenu() {
         )}
       >
         <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-blue to-blue-deep text-xs font-semibold text-white">
-          TM
+          {initialsOf(user.fullName, email)}
         </span>
         <span className="flex flex-col leading-[1.15]">
-          <span className="text-[12.5px] font-medium">Thrishal M.</span>
+          <span className="text-[12.5px] font-medium">{name}</span>
           <span className="whitespace-nowrap text-[10.5px] tracking-[0.02em] text-fg-3">
-            STUDENT · &apos;27
+            STUDENT{batch && ` · ${batch}`}
           </span>
         </span>
       </button>
@@ -49,11 +62,10 @@ export function UserMenu() {
         >
           <div className="mb-1.5 border-b border-border px-3 pb-3 pt-2.5">
             <div className="text-[13.5px] font-semibold tracking-[-0.005em]">
-              Thrishal M. · &apos;27
+              {name}
+              {batch && ` · ${batch}`}
             </div>
-            <div className="mt-px text-[11.5px] text-fg-3">
-              thrishal.23bcs10115@sst.scaler.com
-            </div>
+            <div className="mt-px text-[11.5px] text-fg-3">{email}</div>
           </div>
           <Link href="/me" className={cn(ITEM, "text-fg hover:bg-bg-2 [&_svg]:text-fg-3 hover:[&_svg]:text-fg")}>
             <Icon.bookmark /> My posts
@@ -61,15 +73,23 @@ export function UserMenu() {
           <Link href="#" className={cn(ITEM, "text-fg hover:bg-bg-2 [&_svg]:text-fg-3 hover:[&_svg]:text-fg")}>
             <Icon.user /> Account settings
           </Link>
+          {isOps && (
+            <>
+              <div className="mx-1 my-1.5 h-px bg-border" />
+              <Link
+                href="/ops/queue"
+                className={cn(ITEM, "text-[#b196f8] hover:bg-[rgba(122,90,224,0.1)] hover:text-[#c5a9ff] [&_svg]:text-[#a486f5]")}
+              >
+                <Icon.shield /> Switch to Ops view
+              </Link>
+            </>
+          )}
           <div className="mx-1 my-1.5 h-px bg-border" />
-          <Link
-            href="/ops/queue"
-            className={cn(ITEM, "text-[#b196f8] hover:bg-[rgba(122,90,224,0.1)] hover:text-[#c5a9ff] [&_svg]:text-[#a486f5]")}
+          <button
+            type="button"
+            onClick={() => signOut({ redirectUrl: "/sign-in" })}
+            className={cn(ITEM, "text-red hover:bg-red-soft [&_svg]:text-red")}
           >
-            <Icon.shield /> Switch to Ops view
-          </Link>
-          <div className="mx-1 my-1.5 h-px bg-border" />
-          <button type="button" className={cn(ITEM, "text-red hover:bg-red-soft [&_svg]:text-red")}>
             <Icon.arrow /> Sign out
           </button>
         </div>

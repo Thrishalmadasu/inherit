@@ -5,7 +5,7 @@ import { TopNav } from "@/components/top-nav";
 import { Chip } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/select";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { avgDifficultyOf, type Experience } from "@/lib/mock/data";
+import { avgDifficultyOf, type Experience } from "@/lib/types";
 
 const ROUND_FILTERS = [
   { id: "all", label: "All rounds" },

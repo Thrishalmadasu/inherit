@@ -2,6 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
+import { batchLabelFromEmail, initialsOf, shortName } from "@/lib/user-display";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -506,6 +508,13 @@ function StepIdentity({
   const taggedBlocks = form.rounds.flatMap((r) => r.blocks).filter((b) => b.topics.length).length;
   const tips = form.tips.filter((t) => t.text.trim()).length;
 
+  const { user } = useUser();
+  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const name = shortName(user?.fullName, email);
+  const batch = batchLabelFromEmail(email);
+  const byline = batch ? `${name} · ${batch}` : name;
+  const anonByline = batch ? `SST ${batch} student` : "SST student";
+
   return (
     <>
       <header className="mb-[22px]">
@@ -521,8 +530,8 @@ function StepIdentity({
         <IdentityCard
           active={!form.anonymous}
           onClick={() => update({ anonymous: false })}
-          circle="TM"
-          title="Post as Thrishal M. · '27"
+          circle={initialsOf(user?.fullName, email)}
+          title={`Post as ${byline}`}
           sub="Your name and batch appear on the post. Builds peer reputation."
         />
         <IdentityCard
@@ -530,7 +539,7 @@ function StepIdentity({
           onClick={() => update({ anonymous: true })}
           circle="?"
           title="Post anonymously"
-          sub={'Shows as "SST \'27 student · identity verified by Placement Ops".'}
+          sub={`Shows as "${anonByline} · identity verified by Placement Ops".`}
         />
       </div>
 
@@ -556,7 +565,7 @@ function StepIdentity({
           <SummaryK k="Tagged blocks" v={String(taggedBlocks)} />
           <SummaryK k="Prep tips" v={String(tips)} />
           <SummaryK k="Reflections" v={form.reflection.trim() ? "Included" : "Skipped"} />
-          <SummaryK k="Byline" v={form.anonymous ? "Anonymous" : "Thrishal M. · '27"} />
+          <SummaryK k="Byline" v={form.anonymous ? "Anonymous" : byline} />
         </div>
       </div>
 

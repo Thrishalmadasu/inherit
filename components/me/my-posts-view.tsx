@@ -1,8 +1,9 @@
 "use client";
 
-// Client half of My Posts: tab filtering, the localStorage draft row, and the
-// author actions (restore / delete / resubmit). Posts arrive as props from
-// the server page — never queried here.
+// Client half of My Posts: tab filtering, the localStorage draft row, the
+// author actions (restore / delete / resubmit), and the Saved tab (bookmarked
+// posts by others). Everything arrives as props from the server page — never
+// queried here.
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TopNav } from "@/components/top-nav";
@@ -19,8 +20,9 @@ import {
   type ShareDraft,
 } from "@/lib/draft";
 import { deleteMyPost, restoreMyPost, resubmitWithdrawn } from "@/app/actions/my-posts";
+import { ExperienceCard } from "@/components/ui/experience-card";
 import type { ActionResult } from "@/lib/write/run";
-import type { MyPost, ReviewStatus } from "@/lib/types";
+import type { Experience, MyPost, ReviewStatus } from "@/lib/types";
 
 const TABS = [
   { id: "all", label: "All" },
@@ -32,6 +34,7 @@ const TABS = [
   { id: "Withdrawn", label: "Withdrawn" },
   { id: "Hidden", label: "Hidden" },
   { id: "Deleted", label: "Deleted" },
+  { id: "Saved", label: "Saved" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -46,7 +49,7 @@ const STATUS_PILL: Record<ReviewStatus, string> = {
   Deleted: "text-fg-3 bg-gray-soft border-gray-border",
 };
 
-export function MyPostsView({ posts }: { posts: MyPost[] }) {
+export function MyPostsView({ posts, saved }: { posts: MyPost[]; saved: Experience[] }) {
   const [tab, setTab] = useState<TabId>("all");
   // Lazy init: read the autosaved draft once on mount (client-only state).
   const [draft, setDraft] = useState<ShareDraft | null>(() => {
@@ -55,14 +58,19 @@ export function MyPostsView({ posts }: { posts: MyPost[] }) {
   });
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: posts.length, Draft: draft ? 1 : 0 };
+    // "all" counts MY posts only — Saved is other people's posts, kept apart.
+    const c: Record<string, number> = {
+      all: posts.length,
+      Draft: draft ? 1 : 0,
+      Saved: saved.length,
+    };
     for (const p of posts) c[p.status] = (c[p.status] || 0) + 1;
     if (draft) c.all += 1;
     return c;
-  }, [posts, draft]);
+  }, [posts, draft, saved]);
 
   const list = useMemo(() => {
-    if (tab === "Draft") return [];
+    if (tab === "Draft" || tab === "Saved") return [];
     if (tab === "all")
       return [
         ...posts.filter((p) => p.status !== "Deleted"),
@@ -95,7 +103,7 @@ export function MyPostsView({ posts }: { posts: MyPost[] }) {
           {TABS.map((t) => {
             const n = counts[t.id] ?? 0;
             const active = tab === t.id;
-            if (n === 0 && t.id !== "all" && t.id !== "Draft" && t.id !== "Under Review" && t.id !== "Approved")
+            if (n === 0 && t.id !== "all" && t.id !== "Draft" && t.id !== "Under Review" && t.id !== "Approved" && t.id !== "Saved")
               return null; // edge-state tabs (Rejected/Withdrawn/Hidden/Deleted) appear only when non-empty
             return (
               <button
@@ -128,7 +136,23 @@ export function MyPostsView({ posts }: { posts: MyPost[] }) {
           })}
         </div>
 
-        {list.length === 0 && !showDraft ? (
+        {tab === "Saved" ? (
+          saved.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
+              <strong className="mb-1.5 block font-semibold text-fg">
+                Nothing saved yet.
+              </strong>
+              Hit Save on any experience and it&apos;ll be waiting here when you
+              prep for that company.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {saved.map((e) => (
+                <ExperienceCard key={e.id} e={e} showCompany />
+              ))}
+            </div>
+          )
+        ) : list.length === 0 && !showDraft ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
             <strong className="mb-1.5 block font-semibold text-fg">
               {tab === "Draft" ? "No drafts right now." : "Nothing here yet."}

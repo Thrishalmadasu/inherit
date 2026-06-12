@@ -220,6 +220,22 @@ export const savedExperiences = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.experienceId] })],
 );
 
+// One row per user×experience ever viewed — `experiences.view_count` counts
+// UNIQUE viewers, and this PK is what makes the increment once-per-user.
+export const viewedExperiences = pgTable(
+  "viewed_experiences",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    experienceId: text("experience_id")
+      .notNull()
+      .references(() => experiences.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.experienceId] })],
+);
+
 export const notifications = pgTable("notifications", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")

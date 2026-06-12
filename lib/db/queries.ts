@@ -307,6 +307,52 @@ export async function latestExperiences(n: number): Promise<Experience[]> {
   return (await loadVisible()).slice(0, n).map(toCard);
 }
 
+// ── Engagement reads (Session 3) ─────────────────────────────────────────────
+
+// Has THIS viewer already marked helpful / saved? Seeds the detail-page
+// buttons so the optimistic UI starts from truth.
+export async function getViewerEngagement(
+  userId: string,
+  expId: string,
+): Promise<{ helpful: boolean; saved: boolean }> {
+  const [reaction, savedRow] = await Promise.all([
+    db
+      .select({ id: s.reactions.id })
+      .from(s.reactions)
+      .where(and(eq(s.reactions.userId, userId), eq(s.reactions.experienceId, expId))),
+    db
+      .select({ id: s.savedExperiences.experienceId })
+      .from(s.savedExperiences)
+      .where(
+        and(
+          eq(s.savedExperiences.userId, userId),
+          eq(s.savedExperiences.experienceId, expId),
+        ),
+      ),
+  ]);
+  return { helpful: reaction.length > 0, saved: savedRow.length > 0 };
+}
+
+// The viewer's bookmarks, most recently saved first. Goes through visibleExp:
+// a saved post that later gets hidden/deleted/unpublished silently drops out
+// (the save row stays, so it reappears if the post comes back).
+export async function getSavedExperiences(userId: string): Promise<Experience[]> {
+  const saved = await db
+    .select({ experienceId: s.savedExperiences.experienceId })
+    .from(s.savedExperiences)
+    .where(eq(s.savedExperiences.userId, userId))
+    .orderBy(desc(s.savedExperiences.createdAt));
+  if (saved.length === 0) return [];
+  const order = new Map(saved.map((r, i) => [r.experienceId, i]));
+  const rows = await loadWhere(
+    and(visibleExp, inArray(s.experiences.id, saved.map((r) => r.experienceId))),
+    desc(s.experiences.publishedAt),
+  );
+  return rows
+    .sort((a, b) => (order.get(a.exp.id) ?? 0) - (order.get(b.exp.id) ?? 0))
+    .map(toCard);
+}
+
 // ── Author-facing reads (write loop, Session 2) ──────────────────────────────
 // These deliberately do NOT use visibleExp: an author always sees their own
 // posts; Ops sees the pending queue. Student-facing surfaces above remain the

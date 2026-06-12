@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
@@ -10,25 +10,52 @@ import { Difficulty } from "@/components/ui/primitives";
 import { QuestionCard, PrepTip, Section } from "@/components/experience/blocks";
 import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
+import { recordView, setHelpful, setSaved } from "@/app/actions/engagement";
 import type { Experience } from "@/lib/types";
 
 export function ExperienceView({
   exp,
   related,
   company,
+  viewer,
 }: {
   exp: Experience;
   related: Experience[];
   company: { name: string; slug: string; industry: string };
+  viewer: { helpful: boolean; saved: boolean };
 }) {
-  const [saved, setSaved] = useState(false);
-  const [helpful, setHelpful] = useState(false);
-  const helpfulCount = (exp.helpful ?? 0) + (helpful ? 1 : 0);
+  const [saved, setSavedState] = useState(viewer.saved);
+  const [helpful, setHelpfulState] = useState(viewer.helpful);
+  // exp.helpful already includes the viewer's persisted vote — only the
+  // optimistic delta vs. what the server knew at render time is added here.
+  const helpfulCount =
+    (exp.helpful ?? 0) + (helpful === viewer.helpful ? 0 : helpful ? 1 : -1);
 
+  // Count this visit exactly once per user, server-side (idempotent).
+  useEffect(() => {
+    void recordView(exp.id);
+  }, [exp.id]);
+
+  // Optimistic with rollback: flip locally, persist, revert on failure.
   const toggleSave = () => {
-    setSaved((s) => {
-      toast(!s ? "Saved to My posts" : "Removed from Saved");
-      return !s;
+    const next = !saved;
+    setSavedState(next);
+    toast(next ? "Saved to My posts" : "Removed from Saved");
+    void setSaved(exp.id, next).then((r) => {
+      if (!r.ok) {
+        setSavedState(!next);
+        toast(r.error);
+      }
+    });
+  };
+  const toggleHelpful = () => {
+    const next = !helpful;
+    setHelpfulState(next);
+    void setHelpful(exp.id, next).then((r) => {
+      if (!r.ok) {
+        setHelpfulState(!next);
+        toast(r.error);
+      }
     });
   };
   const handleShare = async () => {
@@ -155,7 +182,7 @@ export function ExperienceView({
               company pages.
             </p>
             <button
-              onClick={() => setHelpful((v) => !v)}
+              onClick={toggleHelpful}
               aria-pressed={helpful}
               className={cn(
                 "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-4 text-[12.5px] [&_svg]:size-[13px]",

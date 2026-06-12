@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-12** after Session 2 (the write loop).
+> Living document. Last updated **2026-06-12** after Session 3 (the engagement layer).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -30,13 +30,14 @@ next person interviewing at a company walks in with the batch's collective intel
 | Ops users tab | ✅ UI complete | still hardcoded; role management is a later session |
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
-| Helpful votes / views / saves (persisted) | ⏳ Not started | UI exists; localStorage/optimistic only |
+| Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views unique per user; Saved tab on /me |
 | Invite-to-share (CSV outreach) | ⏳ Placeholder tab | full spec in PRD §7 Flow F |
 | Email (Resend) + L&D Sheets sync | ⏳ Not started | last; behind interfaces per plan |
 
 **The one-sentence status:** *the full loop is real — a student submits, Ops moderates
-(FIFO), the post publishes, and every author/moderator state (needs-edits, reject,
-hide, delete, withdraw, edit→re-review) round-trips through Postgres.*
+(FIFO), the post publishes, every author/moderator state (needs-edits, reject,
+hide, delete, withdraw, edit→re-review) round-trips through Postgres, and reader
+engagement (Helpful votes, saves, unique views) persists with it.*
 
 ---
 
@@ -76,7 +77,7 @@ web/
 │  ├─ feed/page.tsx           # DB-backed
 │  ├─ search/page.tsx         # DB-backed (client-side filtering)
 │  ├─ share/page.tsx          # 5-step form; ?edit=<id> prefills from DB (author-gated)
-│  ├─ me/page.tsx             # My Posts — real rows, all states
+│  ├─ me/page.tsx             # My Posts — real rows, all states + Saved tab
 │  ├─ under-review/page.tsx   # author's actual pending post + edit/withdraw
 │  ├─ actions/                # ★ Server Action endpoints ("use server"): thin
 │  │                          #   auth wrappers around lib/write/* cores
@@ -103,13 +104,14 @@ web/
 │  │                          #   (+ author/Ops reads that deliberately bypass it)
 │  ├─ validations/experience.ts  # Zod schema for the share payload (mirrors draft)
 │  ├─ write/                  # ★ write cores: experiences (submit/resubmit),
-│  │                          #   moderation, my-posts, run (action wrapper).
+│  │                          #   moderation, my-posts, engagement (helpful/save/
+│  │                          #   view), run (action wrapper).
 │  │                          #   Take an explicit `actor` — testable without Clerk
 │  ├─ share-form.ts           # curated taxonomy, form constants, completion %
 │  ├─ draft.ts                # localStorage draft persistence
 │  ├─ cn.ts, toast.ts
 ├─ db/seed.ts                 # wipe + seed (npx tsx db/seed.ts)
-├─ db/verify-write-loop.ts    # ★ 39-assertion invariant test of the write loop
+├─ db/verify-write-loop.ts    # ★ 58-assertion invariant test: write loop + engagement
 ├─ drizzle.config.ts
 └─ docs/HANDBOOK.md           # this file
 ```
@@ -141,7 +143,8 @@ users ──< experiences ──< rounds ──< content_blocks >──< topic_t
                 │                                          (join: content_block_topic_tags)
                 ├──< prep_tips
                 ├──< reactions          (Helpful-only; UNIQUE(user, experience))
-                ├──< saved_experiences
+                ├──< saved_experiences  (PK(user, experience))
+                ├──< viewed_experiences (PK(user, experience) — unique-view dedupe)
                 └──< notifications
 companies ──< experiences
 role_change_audit / moderation_actions  (append-only audit)
@@ -153,7 +156,15 @@ flags                                    (reserved, no UI in V1)
 - **Visibility** (`lib/db/queries.ts → visibleExp`): student-facing = `approved` AND
   `deleted_at IS NULL` AND `hidden_at IS NULL`. *Every* read goes through this one
   condition — never re-implement it per-screen.
-- **One Helpful vote per user** — DB unique index, not app logic.
+- **One Helpful vote per user** — DB unique index, not app logic. The cached
+  `experiences.helpful_count` (and `view_count`) moves in the SAME SQL statement
+  that inserts/deletes the row — a CTE counts how many rows actually changed and
+  the counter moves by exactly that (`lib/write/engagement.ts`), so repeated or
+  concurrent calls can never make the counter drift from the rows.
+- **Views are unique per user** — `viewed_experiences` PK dedupes; `view_count`
+  increments only on a user's FIRST visit. The beat is fired from a client
+  `useEffect` on the experience page (a deliberate Server Action), never from the
+  server render, so router prefetch can't inflate counts.
 - **Author delete ≠ Ops hide** — separate column sets (`deleted_*` vs `hidden_*`) so
   accountability is never ambiguous. Hide requires a reason (enforced in the action layer).
 - **Round is a container** — `rounds.name` is a label ("OA", "Tech 1", custom). Content is
@@ -178,7 +189,7 @@ flags                                    (reserved, no UI in V1)
   didn't list it but design §17.5 requires it).
 
 **Schema changes:** still `drizzle-kit push` (Session 2 added one enum value,
-`post_hidden`, this way). The planned switch to generated migrations did NOT happen
+`post_hidden`; Session 3 added the `viewed_experiences` table, this way). The planned switch to generated migrations did NOT happen
 with the write loop — it moved to the hardening item (§10 #6) and must land before
 real user data exists. Until then push remains the only mechanism; be careful.
 
@@ -256,9 +267,9 @@ identity step. Sign-out goes through `useClerk().signOut({ redirectUrl: "/sign-i
 
 | Surface | Data | Actions |
 |---|---|---|
-| Dashboard, Companies, Company, Experience, Feed, Search | **Neon** | Save/Helpful = optimistic UI only (not persisted — Session 3) |
+| Dashboard, Companies, Company, Experience, Feed, Search | **Neon** | Save/Helpful = real Server Actions (optimistic w/ rollback); views counted once per user on page mount |
 | Share form | drafts in **localStorage**; `?edit=` prefill from **Neon** | Submit/Resubmit = real (`submitExperience`) |
-| My Posts / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real |
+| My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
 | Ops users tab | hardcoded list | role change = toast only (later session) |
 | Ops invite tab | placeholder | — (PRD §7 Flow F) |
@@ -280,7 +291,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 39-assertion write-loop invariant test (real DB!) — leaves
+                     # 58-assertion write-loop + engagement invariant test (real DB!) — leaves
                      # test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -315,8 +326,13 @@ npx vercel deploy --prod --yes   # deploy
    post" is an inline expansion (no dedicated route); in-browser click-through as
    the three roles still needs a manual pass with real SST accounts — the preview
    sandbox can't complete Google OAuth.
-3. **Engagement**: Helpful toggle + saves as Server Actions; unique view counts
-   server-side; cached `helpful_count` updated transactionally.
+3. ~~**Engagement**~~ ✅ **Done (Session 3)** — Helpful toggle + saves as Server
+   Actions (`lib/write/engagement.ts`, §5 invariants), unique view counts via
+   `viewed_experiences`, Saved tab on /me. "Most helpful / Most viewed" sorts on
+   Feed/Company now run on real columns — verified in `db/verify-write-loop.ts`
+   (19 new assertions: idempotence, counter↔row consistency, view dedupe,
+   saved-list visibility). In-browser pass with real SST accounts still pending
+   (same OAuth limitation as #2).
 4. **Invite-to-share**: CSV parse (the prototype's `outreach-page.jsx` has the full
    reference implementation incl. header aliases + dedupe buckets) + `invite_*` tables.
 5. **Email (Resend)** behind an `EmailSender` interface (console stub first), then

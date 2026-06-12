@@ -12,11 +12,14 @@ import {
   getMyPendingPost,
   getMyPosts,
   getOpsQueue,
+  getSavedExperiences,
+  getViewerEngagement,
   listFeed,
   getExperience,
   getCompanyPage,
   listOpsPublished,
 } from "../lib/db/queries";
+import { recordViewCore, setHelpfulCore, setSavedCore } from "../lib/write/engagement";
 import { submitExperienceCore, resubmitExperienceCore, WriteError } from "../lib/write/experiences";
 import {
   approveCore,
@@ -241,6 +244,71 @@ async function main() {
     err = e instanceof Error ? e.message : "";
   }
   ok(err.length > 0, "non-curated tag refused");
+
+  // id1 is approved + visible here; id3 was rejected above.
+  const expRow = async (id: string) =>
+    (await db.select().from(s.experiences).where(eq(s.experiences.id, id)))[0];
+
+  console.log("\n— engagement: Helpful votes (cached count ↔ reaction rows) —");
+  await setHelpfulCore(student2, id1, true);
+  ok((await expRow(id1)).helpfulCount === 1, "helpful on → cached count 1");
+  await setHelpfulCore(student2, id1, true);
+  ok((await expRow(id1)).helpfulCount === 1, "repeat helpful is idempotent (count unmoved)");
+  ok(
+    (await db.select().from(s.reactions).where(eq(s.reactions.experienceId, id1))).length === 1,
+    "exactly one reactions row per user+experience",
+  );
+  err = "";
+  try {
+    await db.insert(s.reactions).values({ userId: student2.id, experienceId: id1 });
+  } catch (e) {
+    err = String(e);
+  }
+  ok(err.length > 0, "raw duplicate reaction rejected by the DB (UNIQUE is the invariant)");
+  ok((await getViewerEngagement(student2.id, id1)).helpful, "viewer-engagement read sees the vote");
+  await setHelpfulCore(moderator, id1, true);
+  ok((await expRow(id1)).helpfulCount === 2, "second voter → count 2");
+  ok(
+    (await listFeed()).find((e) => e.id === id1)?.helpful === 2,
+    "feed card carries the real count (the Most-helpful sort input)",
+  );
+  await setHelpfulCore(moderator, id1, false);
+  ok((await expRow(id1)).helpfulCount === 1, "un-helpful decrements");
+  await setHelpfulCore(moderator, id1, false);
+  ok((await expRow(id1)).helpfulCount === 1, "repeat un-helpful is a no-op (count can't drift)");
+  err = "";
+  try {
+    await setHelpfulCore(student1, id3, true); // id3 is rejected, not live
+  } catch (e) {
+    err = e instanceof WriteError ? e.message : "";
+  }
+  ok(err.includes("not found"), "helpful on a non-live post refused");
+
+  console.log("\n— engagement: unique view counts —");
+  await recordViewCore(student2, id1);
+  await recordViewCore(student2, id1);
+  ok((await expRow(id1)).viewCount === 1, "same user viewing twice counts once");
+  await recordViewCore(moderator, id1);
+  ok((await expRow(id1)).viewCount === 2, "distinct viewers count once each");
+  await recordViewCore(student1, id3); // not live → no-op, no throw
+  ok((await expRow(id3)).viewCount === 0, "views on a non-live post don't count");
+  ok(
+    (await listFeed()).find((e) => e.id === id1)?.views === 2,
+    "feed card carries the real count (the Most-viewed sort input)",
+  );
+
+  console.log("\n— engagement: saves + the visibility invariant —");
+  await setSavedCore(student2, id1, true);
+  await setSavedCore(student2, id1, true); // idempotent
+  let savedList = await getSavedExperiences(student2.id);
+  ok(savedList.length === 1 && savedList[0].id === id1, "saved list shows the bookmark once");
+  ok((await getViewerEngagement(student2.id, id1)).saved, "viewer-engagement read sees the save");
+  await hideCore(moderator, id1, "Verify-script hide for the saved-tab invariant.");
+  ok((await getSavedExperiences(student2.id)).length === 0, "hidden post drops out of the saved list");
+  await unhideCore(moderator, id1);
+  ok((await getSavedExperiences(student2.id)).length === 1, "unhide brings the bookmark back");
+  await setSavedCore(student2, id1, false);
+  ok((await getSavedExperiences(student2.id)).length === 0, "unsave removes it");
 
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }

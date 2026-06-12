@@ -532,3 +532,28 @@ export async function getEditPrefill(
     },
   };
 }
+
+// ── Invite-to-share dedupe sets (PRD §7 Flow F) ──────────────────────────────
+// Lowercased emails the next campaign must skip: students with a post already
+// on the platform (any non-deleted, non-withdrawn submission counts — drafts
+// in review included) and students a previous campaign already emailed.
+export async function getInviteDedupe(): Promise<{
+  alreadyShared: string[];
+  alreadyInvited: string[];
+}> {
+  const [authors, invited] = await Promise.all([
+    db
+      .selectDistinct({ email: s.users.sstEmail })
+      .from(s.users)
+      .innerJoin(s.experiences, eq(s.experiences.authorId, s.users.id))
+      .where(and(isNull(s.experiences.deletedAt), isNull(s.experiences.withdrawnAt))),
+    db
+      .selectDistinct({ email: s.inviteRecipients.email })
+      .from(s.inviteRecipients)
+      .where(eq(s.inviteRecipients.status, "sent")),
+  ]);
+  return {
+    alreadyShared: authors.map((r) => r.email.toLowerCase()),
+    alreadyInvited: invited.map((r) => r.email.toLowerCase()),
+  };
+}

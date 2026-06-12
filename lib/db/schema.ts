@@ -72,6 +72,7 @@ export const inviteSkipReason = pgEnum("invite_skip_reason", [
   "already_shared",
   "invalid_email",
   "missing_email",
+  "already_invited", // emailed by a prior campaign (PRD Flow F #8 — daily-batch dedupe)
 ]);
 
 // ── Core tables ──────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-12** after Session 3 (the engagement layer).
+> Living document. Last updated **2026-06-12** after Session 4 (invite-to-share outreach).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -31,13 +31,14 @@ next person interviewing at a company walks in with the batch's collective intel
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
-| Invite-to-share (CSV outreach) | ⏳ Placeholder tab | full spec in PRD §7 Flow F |
-| Email (Resend) + L&D Sheets sync | ⏳ Not started | last; behind interfaces per plan |
+| Invite-to-share (CSV outreach) | ✅ **Live** (send-only V1) | PRD §7 Flow F; email dispatch behind the `EmailSender` console stub |
+| Email (Resend) + L&D Sheets sync | ⏳ Not started | `EmailSender` interface exists (`lib/email.ts`, console stub); Resend swap + Sheets are next |
 
 **The one-sentence status:** *the full loop is real — a student submits, Ops moderates
 (FIFO), the post publishes, every author/moderator state (needs-edits, reject,
-hide, delete, withdraw, edit→re-review) round-trips through Postgres, and reader
-engagement (Helpful votes, saves, unique views) persists with it.*
+hide, delete, withdraw, edit→re-review) round-trips through Postgres, reader
+engagement (Helpful votes, saves, views) persists with it, and Ops can batch-invite
+interviewees from a CSV (deduped, audited; the email itself is stubbed until Resend).*
 
 ---
 
@@ -81,7 +82,7 @@ web/
 │  ├─ under-review/page.tsx   # author's actual pending post + edit/withdraw
 │  ├─ actions/                # ★ Server Action endpoints ("use server"): thin
 │  │                          #   auth wrappers around lib/write/* cores
-│  └─ ops/                    # layout = DB-role ∪ OPS_EMAILS gate; queue real; invite/users mock
+│  └─ ops/                    # layout = DB-role ∪ OPS_EMAILS gate; queue + invite real; users mock
 ├─ components/
 │  ├─ ui/                     # primitive layer: pill, button, chip, stat-card,
 │  │                          #   funnel, topics-list, experience-card, select, modal
@@ -90,6 +91,7 @@ web/
 │  ├─ under-review/           # pending-actions (edit/withdraw buttons)
 │  ├─ ops/ops-shell.tsx       # Ops chrome (client half of the gated layout)
 │  ├─ ops/queue-view.tsx      # moderation queue UI: approve/edits/reject/hide/unhide
+│  ├─ ops/invite-view.tsx     # invite tab: CSV drop zone, buckets table, compose+preview
 │  ├─ company|companies|experience|feed|search/  # per-screen client views
 │  ├─ top-nav.tsx, user-menu.tsx, hero-search.tsx, icons.tsx
 │  ├─ restricted-screen.tsx   # non-SST account blocked screen (§7)
@@ -103,15 +105,18 @@ web/
 │  ├─ db/queries.ts           # ★ read queries + THE visibility invariant
 │  │                          #   (+ author/Ops reads that deliberately bypass it)
 │  ├─ validations/experience.ts  # Zod schema for the share payload (mirrors draft)
+│  ├─ invite.ts               # invite domain: CSV parser, header aliases, dedupe
+│  │                          #   bucketing, merge tags — pure; runs client AND server
+│  ├─ email.ts                # ★ EmailSender seam (console stub until Resend lands)
 │  ├─ write/                  # ★ write cores: experiences (submit/resubmit),
 │  │                          #   moderation, my-posts, engagement (helpful/save/
-│  │                          #   view), run (action wrapper).
+│  │                          #   view), invites (campaign send), run (action wrapper).
 │  │                          #   Take an explicit `actor` — testable without Clerk
 │  ├─ share-form.ts           # curated taxonomy, form constants, completion %
 │  ├─ draft.ts                # localStorage draft persistence
 │  ├─ cn.ts, toast.ts
 ├─ db/seed.ts                 # wipe + seed (npx tsx db/seed.ts)
-├─ db/verify-write-loop.ts    # ★ 58-assertion invariant test: write loop + engagement
+├─ db/verify-write-loop.ts    # ★ 64-assertion invariant test: write loop + engagement + invites
 ├─ drizzle.config.ts
 └─ docs/HANDBOOK.md           # this file
 ```
@@ -191,7 +196,10 @@ flags                                    (reserved, no UI in V1)
   didn't list it but design §17.5 requires it).
 
 **Schema changes:** still `drizzle-kit push` (Session 2 added one enum value,
-`post_hidden`; Session 3 added — and same-day dropped — `viewed_experiences`, this way). The planned switch to generated migrations did NOT happen
+`post_hidden`; Session 3 added — and same-day dropped — `viewed_experiences`, this way;
+Session 4 added `invite_skip_reason.already_invited` via an explicit one-statement
+`ALTER TYPE … ADD VALUE` instead of a blind push — prefer that for additive enum
+changes). The planned switch to generated migrations did NOT happen
 with the write loop — it moved to the hardening item (§10 #6) and must land before
 real user data exists. Until then push remains the only mechanism; be careful.
 
@@ -309,7 +317,7 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 | My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
 | Ops users tab | hardcoded list | role change = toast only (later session) |
-| Ops invite tab | placeholder | — (PRD §7 Flow F) |
+| Ops invite tab | **Neon** (dedupe sets + campaign/recipient rows) | Send = real (`sendInvites`); email dispatch = console stub (`lib/email.ts`) until Resend |
 | Notifications | **rows written** on every transition | no UI yet (no bell, no email — email is roadmap #5) |
 
 The write path end-to-end: form (client) → `app/actions/experiences.submitExperience`
@@ -329,8 +337,8 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 58-assertion write-loop + engagement invariant test (real DB!) — leaves
-                     # test rows behind; ALWAYS reseed after. Run before deploys.
+                     # 64-assertion write-loop + engagement + invite invariant test (real DB!) —
+                     # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
 
@@ -374,9 +382,20 @@ npx vercel deploy --prod --yes   # deploy
    (19 new assertions: idempotence, counter↔row consistency, view dedupe,
    saved-list visibility). In-browser pass now unblocked by dev impersonation
    (§7); verified server-rendered flows as student + moderator locally.
-4. **Invite-to-share**: CSV parse (the prototype's `outreach-page.jsx` has the full
-   reference implementation incl. header aliases + dedupe buckets) + `invite_*` tables.
-5. **Email (Resend)** behind an `EmailSender` interface (console stub first), then
+4. ~~**Invite-to-share**~~ ✅ **Done (Session 4)** — send-only V1 of PRD §7 Flow F,
+   ported faithfully from the prototype's `outreach-page.jsx` (no KPI strip / campaigns
+   table — those are deferred Ops Analytics). CSV → header-alias normalisation →
+   Ready/Will-skip/Errors buckets (dedupe vs existing authors AND prior
+   `invite_recipients`, plus in-file dupes / bad emails) → compose with merge tags +
+   live preview → confirm → ONE `db.batch()` writes `invite_campaigns` +
+   all recipient rows (sent/skipped + reason, full audit trail). The client parses
+   for instant feedback but the Send action re-parses the raw CSV server-side
+   against fresh dedupe sets — client buckets are never trusted. Invite links land
+   on `/share?company=&role=&round=` pre-filled (an in-progress draft still wins).
+   Email dispatch is the `lib/email.ts` console stub; 6 new assertions in
+   `db/verify-write-loop.ts` (64 total, incl. the same-CSV-next-day refusal).
+5. **Email (Resend)** behind the `EmailSender` interface (console stub shipped in
+   Session 4 — swap `getEmailSender()`), then
    **L&D Sheets sync** (service account, append-on-publish, background, never blocks).
 6. **Hardening before '27 launch**: switch to migration files, invariant tests
    (visibility, FIFO, one-vote), GitHub-connected deploys, rate limits on actions,
@@ -426,3 +445,8 @@ npx vercel deploy --prod --yes   # deploy
   don't start trusting `dbUserId` for writes without re-syncing it.
 - The repo is a **local git repo only** (initialized Session 2); connecting GitHub +
   Vercel git deploys is still the recommended next infra step (§9).
+- Invite-link prefill (`/share?company=…`) only applies when there's no saved share
+  draft — a student mid-draft keeps their draft (deliberate; same draft-wins rule as
+  edit mode). Recipients who were "sent" by the stub are dedupe-blocked from future
+  campaigns even though no real email went out — fine before launch (reseed clears
+  `invite_*`), but remember it when testing campaigns on prod data.

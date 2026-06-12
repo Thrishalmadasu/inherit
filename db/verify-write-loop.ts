@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { db, schema as s } from "../lib/db";
 import {
   getEditPrefill,
+  getInviteDedupe,
   getMyPendingPost,
   getMyPosts,
   getOpsQueue,
@@ -34,6 +35,7 @@ import {
   resubmitWithdrawnCore,
   withdrawMyPostCore,
 } from "../lib/write/my-posts";
+import { sendInvitesCore } from "../lib/write/invites";
 import type { ShareDraftForm } from "../lib/draft";
 
 let passed = 0;
@@ -310,6 +312,61 @@ async function main() {
   await setSavedCore(student2, id1, false);
   ok((await getSavedExperiences(student2.id)).length === 0, "unsave removes it");
 
+  console.log("\n— Flow F: invite-to-share (CSV → campaign + recipients, dedupe) —");
+  // Header aliases on purpose (full_name/email_address/employer/position/stage).
+  // student1 has a live post by now → must be skipped as already_shared.
+  const inviteCsv = [
+    "full_name,email_address,employer,position,stage",
+    "Fresh Invitee,invitee.23bcs10999@sst.scaler.com,Stripe,SDE Intern,System Design",
+    `Already Shared,${student1.sstEmail},Amazon,SDE Intern,OA`,
+    "Dupe Row,invitee.23bcs10999@sst.scaler.com,Stripe,SDE Intern,System Design",
+    "Bad Email,not-an-email,Stripe,SDE Intern,OA",
+  ].join("\n");
+  const sent1 = await sendInvitesCore(moderator, {
+    csv: inviteCsv,
+    fileName: "verify.csv",
+    subject: "Share your {{company}} interview",
+    body: "Hi {{name}} — {{role}}, {{round}}.",
+  });
+  ok(
+    sent1.sent === 1 && sent1.skipped === 2 && sent1.errors === 1,
+    "buckets: 1 ready (aliased headers), already-shared + in-file dupe skipped, bad email errored",
+  );
+  const [camp] = await db
+    .select()
+    .from(s.inviteCampaigns)
+    .where(eq(s.inviteCampaigns.createdByUserId, moderator.id));
+  ok(
+    camp.readyCount === 1 && camp.skippedCount === 2 && camp.errorCount === 1 && !!camp.sentAt,
+    "campaign row records the counts and templates",
+  );
+  const recRows = await db
+    .select()
+    .from(s.inviteRecipients)
+    .where(eq(s.inviteRecipients.campaignId, camp.id));
+  ok(recRows.length === 4, "every CSV row recorded for the audit trail");
+  ok(
+    recRows.find((r) => r.email === student1.sstEmail)?.skipReason === "already_shared" &&
+      recRows.find((r) => r.email === "not-an-email")?.skipReason === "invalid_email",
+    "skip reasons stored per recipient",
+  );
+  ok(
+    (await getInviteDedupe()).alreadyInvited.includes("invitee.23bcs10999@sst.scaler.com"),
+    "sent recipient joins the dedupe set",
+  );
+  await sendInvitesCore(moderator, {
+    csv: inviteCsv,
+    fileName: "verify.csv",
+    subject: "s",
+    body: "b",
+  }).then(
+    () => ok(false, "re-running the same campaign must refuse"),
+    (e) =>
+      ok(
+        e instanceof WriteError && /No ready recipients/.test(e.message),
+        "same CSV next day: everyone already invited/shared → send refused",
+      ),
+  );
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }
 

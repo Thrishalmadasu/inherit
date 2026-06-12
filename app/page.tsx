@@ -4,7 +4,8 @@ import { HeroSearch } from "@/components/hero-search";
 import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
-import { latestExperiences, listCompanies } from "@/lib/db/queries";
+import { requireDbUser } from "@/lib/auth";
+import { getMyPendingPost, latestExperiences, listCompanies } from "@/lib/db/queries";
 import type { CompanyListItem, Experience } from "@/lib/types";
 
 export const dynamic = "force-dynamic"; // always reflect the latest DB rows
@@ -24,9 +25,11 @@ function timeAgo(days: number) {
 }
 
 export default async function DashboardPage() {
-  const [companies, experiences] = await Promise.all([
+  const user = await requireDbUser();
+  const [companies, experiences, pending] = await Promise.all([
     listCompanies(),
     latestExperiences(6),
+    getMyPendingPost(user.id),
   ]);
 
   return (
@@ -60,28 +63,32 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Your posts strip */}
-        <Link
-          href="/under-review"
-          className="mt-9 flex items-center gap-3.5 rounded-lg border border-border bg-surface px-[18px] py-3.5 transition-[border-color,background] hover:border-border-hover hover:bg-surface-3"
-        >
-          <div className="grid size-9 shrink-0 place-items-center rounded-md border border-blue-border bg-blue-soft text-blue">
-            <Icon.doc className="size-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="mb-0.5 text-[13.5px] font-semibold tracking-[-0.005em]">
-              Your Amazon OA submission is under review
+        {/* Your posts strip — only when the signed-in user has a pending post */}
+        {pending && (
+          <Link
+            href="/under-review"
+            className="mt-9 flex items-center gap-3.5 rounded-lg border border-border bg-surface px-[18px] py-3.5 transition-[border-color,background] hover:border-border-hover hover:bg-surface-3"
+          >
+            <div className="grid size-9 shrink-0 place-items-center rounded-md border border-blue-border bg-blue-soft text-blue">
+              <Icon.doc className="size-4" />
             </div>
-            <div className="text-[12.5px] text-fg-3">
-              Submitted today · we&apos;ll email you the moment it&apos;s live
+            <div className="min-w-0 flex-1">
+              <div className="mb-0.5 text-[13.5px] font-semibold tracking-[-0.005em]">
+                Your {pending.companyName} {pending.exp.round ?? ""} submission is
+                under review
+              </div>
+              <div className="text-[12.5px] text-fg-3">
+                Submitted {pending.submittedAgo} · we&apos;ll email you the moment
+                it&apos;s live
+              </div>
             </div>
-          </div>
-          <span className="inline-flex h-[22px] items-center gap-[5px] rounded-full border border-blue-border bg-blue-soft px-2.5 text-[11.5px] font-medium text-blue">
-            <span className="size-1.5 rounded-full bg-current" />
-            Under Review
-          </span>
-          <Icon.arrow className="size-3.5 text-fg-3" />
-        </Link>
+            <span className="inline-flex h-[22px] items-center gap-[5px] rounded-full border border-blue-border bg-blue-soft px-2.5 text-[11.5px] font-medium text-blue">
+              <span className="size-1.5 rounded-full bg-current" />
+              Under Review
+            </span>
+            <Icon.arrow className="size-3.5 text-fg-3" />
+          </Link>
+        )}
 
         {/* Latest across SST */}
         <Section title="Latest across SST" href="/feed">

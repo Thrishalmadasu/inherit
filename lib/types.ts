@@ -15,6 +15,8 @@ export type ReviewStatus =
   | "Under Review"
   | "Approved"
   | "Needs Edits"
+  | "Rejected"
+  | "Withdrawn"
   | "Hidden"
   | "Deleted";
 export type TipCategory = "resource" | "strategy" | "mindset";
@@ -147,6 +149,20 @@ export interface OpsQueueItem {
   tips: number;
   hasReflection: boolean;
   overview: string;
+  detail: Experience; // full post for inline review (moderators approve what they read)
+}
+
+export interface OpsPublishedItem {
+  id: string;
+  company: string;
+  role: string;
+  round: string;
+  outcome: Outcome;
+  publishedAt: string;
+  views: number;
+  helpful: number;
+  hiddenAt?: string;
+  hiddenReason?: string;
 }
 
 // Map a final outcome onto the per-round status vocabulary.

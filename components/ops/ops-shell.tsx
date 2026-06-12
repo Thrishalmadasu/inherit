@@ -5,17 +5,22 @@ import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
-import { opsQueue } from "@/lib/mock/data";
 
-const TABS = [
-  { href: "/ops/queue", label: "Moderation queue", count: opsQueue.length },
-  { href: "/ops/invite", label: "Invite to share" },
-  { href: "/ops/users", label: "Users" },
-];
-
-// Ops chrome (client). Access is gated server-side in app/ops/layout.tsx.
-export function OpsShell({ children }: { children: React.ReactNode }) {
+// Ops chrome (client). Access is gated server-side in app/ops/layout.tsx,
+// which also supplies the live pending count for the queue badge.
+export function OpsShell({
+  children,
+  pendingCount,
+}: {
+  children: React.ReactNode;
+  pendingCount: number;
+}) {
   const pathname = usePathname();
+  const TABS = [
+    { href: "/ops/queue", label: "Moderation queue", count: pendingCount },
+    { href: "/ops/invite", label: "Invite to share" },
+    { href: "/ops/users", label: "Users" },
+  ];
   return (
     <>
       <TopNav showSearch={false} />

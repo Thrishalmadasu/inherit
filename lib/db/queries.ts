@@ -4,15 +4,20 @@
 //
 // Rows are mapped to the shared DTO shapes (lib/types.ts) so the client
 // views stay unchanged.
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import type {
   CompanyListItem,
   Experience,
+  MyPost,
+  OpsPublishedItem,
+  OpsQueueItem,
   PrepTip,
   QuestionDetail,
+  ReviewStatus,
   RoundEntry,
 } from "@/lib/types";
+import type { ShareDraftForm } from "@/lib/draft";
 
 const visibleExp = and(
   eq(s.experiences.reviewStatus, "approved"),
@@ -39,14 +44,14 @@ type Loaded = {
   tips: (typeof s.prepTips.$inferSelect)[];
 };
 
-async function loadVisible(): Promise<Loaded[]> {
+async function loadWhere(where: SQL | undefined, orderBy: SQL): Promise<Loaded[]> {
   const exps = await db
     .select()
     .from(s.experiences)
     .innerJoin(s.companies, eq(s.experiences.companyId, s.companies.id))
     .innerJoin(s.users, eq(s.experiences.authorId, s.users.id))
-    .where(visibleExp)
-    .orderBy(desc(s.experiences.publishedAt));
+    .where(where)
+    .orderBy(orderBy);
   if (exps.length === 0) return [];
 
   const ids = exps.map((r) => r.experiences.id);
@@ -93,7 +98,7 @@ async function loadVisible(): Promise<Loaded[]> {
     blocksByRound.set(b.roundId, arr);
   }
 
-  return exps.map((r) => ({
+  return exps.map((r): Loaded => ({
     exp: r.experiences,
     company: r.companies,
     author: r.users,
@@ -103,6 +108,8 @@ async function loadVisible(): Promise<Loaded[]> {
     tips: tips.filter((t) => t.experienceId === r.experiences.id),
   }));
 }
+
+const loadVisible = () => loadWhere(visibleExp, desc(s.experiences.publishedAt));
 
 // ── Mapping to the card/detail DTO ───────────────────────────────────────────
 function toRoundEntries(l: Loaded): RoundEntry[] {
@@ -298,4 +305,184 @@ export async function listFeed(): Promise<Experience[]> {
 
 export async function latestExperiences(n: number): Promise<Experience[]> {
   return (await loadVisible()).slice(0, n).map(toCard);
+}
+
+// ── Author-facing reads (write loop, Session 2) ──────────────────────────────
+// These deliberately do NOT use visibleExp: an author always sees their own
+// posts; Ops sees the pending queue. Student-facing surfaces above remain the
+// only consumers of the visibility invariant.
+
+const agoOf = (d: Date | null) => {
+  const diff = Math.max(0, Date.now() - (d?.getTime() ?? 0));
+  if (diff < 3_600_000) return `${Math.max(1, Math.floor(diff / 60_000))} min ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} h ago`;
+  return `${Math.floor(diff / 86_400_000)} d ago`;
+};
+
+// Author delete trumps everything; Ops hide applies to approved; withdrawn is
+// an under_review the author pulled back.
+function statusOf(e: typeof s.experiences.$inferSelect): ReviewStatus {
+  if (e.deletedAt) return "Deleted";
+  if (e.hiddenAt) return "Hidden";
+  if (e.reviewStatus === "under_review")
+    return e.withdrawnAt ? "Withdrawn" : "Under Review";
+  if (e.reviewStatus === "approved") return "Approved";
+  if (e.reviewStatus === "needs_edits") return "Needs Edits";
+  return "Rejected";
+}
+
+export async function getMyPosts(userId: string): Promise<MyPost[]> {
+  const mine = await loadWhere(
+    eq(s.experiences.authorId, userId),
+    desc(s.experiences.updatedAt),
+  );
+  return mine.map((l) => {
+    const status = statusOf(l.exp);
+    return {
+      id: l.exp.id,
+      company: l.company.name,
+      role: l.exp.roleTitle,
+      overallOutcome: l.exp.overallOutcome,
+      status,
+      submittedAt: fmtDate(l.exp.createdAt),
+      updatedAt: fmtDate(l.exp.updatedAt),
+      deletedAt: l.exp.deletedAt ? fmtDate(l.exp.deletedAt) : undefined,
+      tips: l.tips.length,
+      views: l.exp.viewCount,
+      helpful: l.exp.helpfulCount,
+      opsNote:
+        (status === "Needs Edits" || status === "Rejected") && l.exp.reviewNotes
+          ? l.exp.reviewNotes
+          : undefined,
+      hiddenReason: l.exp.hiddenReason ?? undefined,
+      hiddenAt: l.exp.hiddenAt ? fmtDate(l.exp.hiddenAt) : undefined,
+      rounds: toRoundEntries(l),
+    };
+  });
+}
+
+// The author's newest live submission awaiting review — the /under-review page
+// and the dashboard strip. Withdrawn/deleted posts don't count.
+const pendingFor = (userId: string) =>
+  and(
+    eq(s.experiences.authorId, userId),
+    eq(s.experiences.reviewStatus, "under_review"),
+    isNull(s.experiences.withdrawnAt),
+    isNull(s.experiences.deletedAt),
+  );
+
+export interface PendingPreview {
+  id: string;
+  exp: Experience;
+  companyName: string;
+  companyIndustry: string;
+  submittedAgo: string;
+}
+
+export async function getMyPendingPost(userId: string): Promise<PendingPreview | null> {
+  const rows = await loadWhere(pendingFor(userId), desc(s.experiences.createdAt));
+  const l = rows[0];
+  if (!l) return null;
+  return {
+    id: l.exp.id,
+    exp: toDetail(l),
+    companyName: l.company.name,
+    companyIndustry: l.company.industry ?? "",
+    submittedAgo: agoOf(l.exp.createdAt),
+  };
+}
+
+// ── Ops reads ────────────────────────────────────────────────────────────────
+// FIFO is the product promise (PRD §10): oldest created_at first, no
+// fast-tracking. Resubmissions re-stamp created_at, which is what sends them
+// to the back of this very ordering.
+export async function getOpsQueue(): Promise<OpsQueueItem[]> {
+  const pending = await loadWhere(
+    and(
+      eq(s.experiences.reviewStatus, "under_review"),
+      isNull(s.experiences.withdrawnAt),
+      isNull(s.experiences.deletedAt),
+    ),
+    asc(s.experiences.createdAt),
+  );
+  return pending.map((l) => ({
+    id: l.exp.id,
+    realAuthor: {
+      name: l.author.name,
+      batch: batchOf(l.author.batchYear),
+      email: l.author.sstEmail,
+    },
+    bylineAs: l.exp.isAnonymous ? "anonymous" : "real",
+    company: l.company.name,
+    role: l.exp.roleTitle,
+    round: l.rounds[0]?.name ?? "—",
+    outcome: l.exp.overallOutcome,
+    submittedAgo: agoOf(l.exp.createdAt),
+    questions: l.rounds.reduce((n, r) => n + r.blocks.length, 0),
+    tips: l.tips.length,
+    hasReflection: Boolean(l.exp.reflectionText?.trim()),
+    overview: l.exp.overview ?? "",
+    detail: toDetail(l),
+  }));
+}
+
+// Published view for Ops: approved & not author-deleted — hidden posts stay
+// listed (flagged) so they can be unhidden.
+export async function listOpsPublished(): Promise<OpsPublishedItem[]> {
+  const rows = await loadWhere(
+    and(eq(s.experiences.reviewStatus, "approved"), isNull(s.experiences.deletedAt)),
+    desc(s.experiences.publishedAt),
+  );
+  return rows.map((l) => ({
+    id: l.exp.id,
+    company: l.company.name,
+    role: l.exp.roleTitle,
+    round: l.rounds[0]?.name ?? "—",
+    outcome: l.exp.overallOutcome,
+    publishedAt: fmtDate(l.exp.publishedAt),
+    views: l.exp.viewCount,
+    helpful: l.exp.helpfulCount,
+    hiddenAt: l.exp.hiddenAt ? fmtDate(l.exp.hiddenAt) : undefined,
+    hiddenReason: l.exp.hiddenReason ?? undefined,
+  }));
+}
+
+// ── Edit-mode prefill: map DB rows back onto the draft shape ─────────────────
+// Author-gated. The share form treats this exactly like a loaded draft.
+export async function getEditPrefill(
+  id: string,
+  userId: string,
+): Promise<{ form: ShareDraftForm; status: ReviewStatus } | null> {
+  const rows = await loadWhere(
+    and(eq(s.experiences.id, id), eq(s.experiences.authorId, userId)),
+    desc(s.experiences.createdAt),
+  );
+  const l = rows[0];
+  if (!l || l.exp.deletedAt) return null;
+  return {
+    status: statusOf(l.exp),
+    form: {
+      company: l.company.name,
+      role: l.exp.roleTitle,
+      year: l.exp.year,
+      outcome: l.exp.overallOutcome,
+      anonymous: l.exp.isAnonymous,
+      reflection: l.exp.reflectionText ?? "",
+      tips: l.tips.map((t) => ({ category: t.category, text: t.text })),
+      rounds: l.rounds.map((rd) => ({
+        round: rd.name,
+        status: rd.status,
+        detailed: rd.isDetailed,
+        platform: rd.platform ?? "",
+        note: rd.notes ?? "",
+        blocks: rd.blocks.map((b) => ({
+          type: b.blockType,
+          prompt: b.prompt,
+          topics: b.tags,
+          difficulty: b.difficulty,
+          detail: b.detail ?? "",
+        })),
+      })),
+    },
+  };
 }

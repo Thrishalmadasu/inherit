@@ -64,6 +64,31 @@ export async function ensureDbUser(): Promise<AuthGate> {
   return { status: "ok", email };
 }
 
+// ── Action-layer authorization (write loop, Session 2) ──────────────────────
+// Server Actions resolve the signed-in Clerk user to OUR users row and gate on
+// the DB role. The OPS_EMAILS env allowlist stays as a bootstrap OR-gate so a
+// misconfigured roles table can never lock Ops out of moderation.
+export type DbUser = typeof s.users.$inferSelect;
+
+export async function requireDbUser(): Promise<DbUser> {
+  const user = await currentUser();
+  const email = (user?.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
+  if (!user || !email.endsWith(`@${SST_DOMAIN}`)) throw new Error("Not signed in");
+  const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, email));
+  if (!row) throw new Error("No account — reload and try again");
+  return row;
+}
+
+export function isOpsUser(u: DbUser): boolean {
+  return u.role === "moderator" || u.role === "super_admin" || isOpsEmail(u.sstEmail);
+}
+
+export async function requireOps(): Promise<DbUser> {
+  const u = await requireDbUser();
+  if (!isOpsUser(u)) throw new Error("Moderator access required");
+  return u;
+}
+
 function shortFromEmail(email: string): string {
   const first = email.split("@")[0].split(".")[0] || "Student";
   return first[0].toUpperCase() + first.slice(1);

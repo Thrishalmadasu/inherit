@@ -58,6 +58,7 @@ export const notificationType = pgEnum("notification_type", [
   "post_live",
   "post_needs_edits",
   "post_rejected",
+  "post_hidden",
 ]);
 export const moderationActionType = pgEnum("moderation_action_type", ["hide", "unhide"]);
 export const inviteRecipientStatus = pgEnum("invite_recipient_status", [

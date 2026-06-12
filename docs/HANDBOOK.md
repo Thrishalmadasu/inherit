@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-12** after Session 1 (Clerk auth).
+> Living document. Last updated **2026-06-12** after Session 2 (the write loop).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -25,16 +25,18 @@ next person interviewing at a company walks in with the batch's collective intel
 | All 10 screens, pixel-faithful to design | ✅ **Live** | Tailwind 4 rebuild of prototype |
 | Postgres schema (full PRD §9, 16 tables) | ✅ **Live on Neon** | incl. audit tables, constraints |
 | Read paths (dashboard, companies, company, experience, feed, search) | ✅ **Real DB** | funnel + topics computed from rows |
-| Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ UI complete | **submits nowhere yet** — draft in localStorage |
-| My Posts / Under Review / Ops queue / Ops users | ✅ UI complete | **on mock data**; actions are toast-only |
-| Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | every route protected; users mirrored to DB; `/ops` email-gated (see §7) |
-| Write loop (submit → moderate → publish) | ⏳ Not started | Server Actions, after auth |
+| Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ **Live** | submits via Server Action; drafts still localStorage |
+| My Posts / Under Review / Ops queue | ✅ **Real DB** | tabs, statuses, FIFO queue, all actions write rows |
+| Ops users tab | ✅ UI complete | still hardcoded; role management is a later session |
+| Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
+| Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ⏳ Not started | UI exists; localStorage/optimistic only |
 | Invite-to-share (CSV outreach) | ⏳ Placeholder tab | full spec in PRD §7 Flow F |
 | Email (Resend) + L&D Sheets sync | ⏳ Not started | last; behind interfaces per plan |
 
-**The one-sentence status:** *the app is gated to SST accounts and every reader surface
-is real; everything a writer touches is a working UI waiting for Server Actions.*
+**The one-sentence status:** *the full loop is real — a student submits, Ops moderates
+(FIFO), the post publishes, and every author/moderator state (needs-edits, reject,
+hide, delete, withdraw, edit→re-review) round-trips through Postgres.*
 
 ---
 
@@ -73,30 +75,41 @@ web/
 │  ├─ experiences/[id]/page.tsx  # DB-backed, 404s on unknown id
 │  ├─ feed/page.tsx           # DB-backed
 │  ├─ search/page.tsx         # DB-backed (client-side filtering)
-│  ├─ share/page.tsx          # 5-step form (?edit=<id>) — localStorage drafts
-│  ├─ me/page.tsx             # My Posts — MOCK
-│  ├─ under-review/page.tsx   # author preview — MOCK
-│  └─ ops/                    # layout = OPS_EMAILS server gate; queue/invite/users — MOCK
+│  ├─ share/page.tsx          # 5-step form; ?edit=<id> prefills from DB (author-gated)
+│  ├─ me/page.tsx             # My Posts — real rows, all states
+│  ├─ under-review/page.tsx   # author's actual pending post + edit/withdraw
+│  ├─ actions/                # ★ Server Action endpoints ("use server"): thin
+│  │                          #   auth wrappers around lib/write/* cores
+│  └─ ops/                    # layout = DB-role ∪ OPS_EMAILS gate; queue real; invite/users mock
 ├─ components/
 │  ├─ ui/                     # primitive layer: pill, button, chip, stat-card,
 │  │                          #   funnel, topics-list, experience-card, select, modal
 │  ├─ share/                  # share-form, round-editor (block editor), tag-input
+│  ├─ me/my-posts-view.tsx    # client half of My Posts (tabs, draft row, actions)
+│  ├─ under-review/           # pending-actions (edit/withdraw buttons)
 │  ├─ ops/ops-shell.tsx       # Ops chrome (client half of the gated layout)
+│  ├─ ops/queue-view.tsx      # moderation queue UI: approve/edits/reject/hide/unhide
 │  ├─ company|companies|experience|feed|search/  # per-screen client views
 │  ├─ top-nav.tsx, user-menu.tsx, hero-search.tsx, icons.tsx
 │  ├─ restricted-screen.tsx   # non-SST account blocked screen (§7)
 ├─ lib/
 │  ├─ types.ts                # ★ shared DTO types + card helpers (see §6)
-│  ├─ auth.ts                 # ensureDbUser (Clerk→users mirror) + OPS_EMAILS gate
+│  ├─ auth.ts                 # ensureDbUser (Clerk→users mirror) + requireDbUser /
+│  │                          #   requireOps (action-layer authz, DB role ∪ OPS_EMAILS)
 │  ├─ user-display.ts         # shortName/initials/batch-from-email helpers
 │  ├─ db/schema.ts            # ★ THE data model — 16 tables + enums
 │  ├─ db/index.ts             # Drizzle client (Neon HTTP driver)
 │  ├─ db/queries.ts           # ★ read queries + THE visibility invariant
-│  ├─ mock/data.ts            # Phase-0 mock VALUES only (types moved to lib/types.ts)
+│  │                          #   (+ author/Ops reads that deliberately bypass it)
+│  ├─ validations/experience.ts  # Zod schema for the share payload (mirrors draft)
+│  ├─ write/                  # ★ write cores: experiences (submit/resubmit),
+│  │                          #   moderation, my-posts, run (action wrapper).
+│  │                          #   Take an explicit `actor` — testable without Clerk
 │  ├─ share-form.ts           # curated taxonomy, form constants, completion %
 │  ├─ draft.ts                # localStorage draft persistence
 │  ├─ cn.ts, toast.ts
 ├─ db/seed.ts                 # wipe + seed (npx tsx db/seed.ts)
+├─ db/verify-write-loop.ts    # ★ 39-assertion invariant test of the write loop
 ├─ drizzle.config.ts
 └─ docs/HANDBOOK.md           # this file
 ```
@@ -104,8 +117,13 @@ web/
 ### Conventions
 - **Reads:** route = async Server Component → calls `lib/db/queries.ts` → passes typed
   props into a `"use client"` view component. Never query from client components.
-- **Writes (upcoming):** Server Actions in `app/actions/*`, validated with Zod,
-  authorized via a `requireRole` helper. No REST routes.
+- **Writes:** the logic lives in `lib/write/*` ("cores") taking an explicit `actor`
+  (our users row); `app/actions/*` are thin `"use server"` endpoints that resolve the
+  actor (`requireDbUser` / `requireOps`) and delegate. Cores validate with Zod, batch
+  every mutation group into ONE `db.batch()` (Neon runs it as a single transaction),
+  throw `WriteError` for user-safe messages, and are exercised directly by
+  `db/verify-write-loop.ts` — never put business logic in the `"use server"` file
+  (its exports are public RPC endpoints). No REST routes.
 - **Styling:** tokens only — `bg-surface`, `text-fg-2`, `border-border`, `text-blue` etc.
   (defined in `app/globals.css` `@theme`). Don't hardcode hex values in components.
 - **Icons:** `components/icons.tsx` inline SVG set (`<Icon.search className="size-4" />`).
@@ -141,8 +159,17 @@ flags                                    (reserved, no UI in V1)
 - **Round is a container** — `rounds.name` is a label ("OA", "Tech 1", custom). Content is
   typed `content_blocks` (coding | system_design | behavioral | open); any round can mix types.
 - **Curated taxonomy** — students pick tags only from `topic_tags`; `is_dsa` powers the
-  future L&D split.
+  future L&D split. Enforced twice: the Zod schema admits only `TOPIC_TAXONOMY` labels,
+  and the write core re-resolves labels against ACTIVE `topic_tags` rows.
 - Soft-delete only; nothing is ever hard-deleted.
+- **`created_at` on an under_review experience = queue-entry time.** The Ops queue is
+  `ORDER BY created_at ASC`, and every (re)submission — edit of an approved post,
+  needs-edits fix, resubmitted withdrawal — re-stamps `created_at` to NOW. One column,
+  one ordering, and "back of the FIFO queue" (PRD §10) falls out for free. Display
+  dates for published posts use `published_at`, so nothing user-visible shifts.
+- **Reasons are required** for suggest-edits / reject / hide — enforced in the write
+  cores (and the modals won't enable Confirm without one). Hide/unhide additionally
+  append to `moderation_actions`.
 
 **Two pragmatic deviations from a "pure" design (intentional, documented):**
 - `experiences.id` is `text` (e.g. `exp-019`) so seeded deep links stay stable; new
@@ -150,9 +177,15 @@ flags                                    (reserved, no UI in V1)
 - `experiences.overview` column added (detail page renders an Overview lead; PRD §9
   didn't list it but design §17.5 requires it).
 
-**Schema changes:** tonight used `drizzle-kit push` (fast iteration). **Before the write
-loop ships, switch to generated migrations** (`drizzle-kit generate` + commit the SQL in
-`drizzle/`) — from then on, migrations are the only way schema changes.
+**Schema changes:** still `drizzle-kit push` (Session 2 added one enum value,
+`post_hidden`, this way). The planned switch to generated migrations did NOT happen
+with the write loop — it moved to the hardening item (§10 #6) and must land before
+real user data exists. Until then push remains the only mechanism; be careful.
+
+**Withdrawn** is not a `review_status` value: it's `withdrawn_at` on an under_review
+row (the author pulled it back; queue and pending-reads exclude it; resubmitting
+clears it and re-stamps `created_at`). Same pattern as deleted/hidden — state
+overlays live in columns, the enum only tracks the review pipeline.
 
 ---
 
@@ -166,11 +199,11 @@ Neon Postgres ──> lib/db/queries.ts ──> DTO (Experience/CompanyListItem 
   (`toCard`, `toDetail` in queries.ts). Funnel = experiences counted per round label,
   ordered by average position. Top topics = tag frequency across blocks. All computed
   per request (dataset is small; cache later if needed).
-- **The DTO types live in `lib/types.ts`** (moved out of `lib/mock/data.ts` in
-  Session 1, along with the `outcomeToStatus`/`avgDifficultyOf` card helpers).
-  `lib/mock/data.ts` now holds only mock *values*, still consumed by `/me`,
-  `/under-review`, `/ops`, and the share form's edit-prefill — each value dies
-  when its screen goes real in Session 2.
+- **The DTO types live in `lib/types.ts`**. `lib/mock/data.ts` is GONE (Session 2) —
+  every surface reads the DB. The only non-DB state left is localStorage drafts.
+- Author/Ops reads (`getMyPosts`, `getMyPendingPost`, `getOpsQueue`,
+  `listOpsPublished`, `getEditPrefill`) live in queries.ts too but deliberately
+  bypass `visibleExp` — you always see your own posts; Ops sees pending ones.
 - Read routes set `export const dynamic = "force-dynamic"` so pages always reflect the DB
   (now redundant-but-harmless: the auth check in the root layout makes every route dynamic).
 
@@ -193,11 +226,14 @@ Shipped in Session 1. Four layers, outermost first:
    the root layout. A signed-in non-`@sst.scaler.com` account gets
    `components/restricted-screen.tsx` (sign-out + retry) instead of the app, even if
    the dashboard allowlist is misconfigured. Never trust one layer.
-4. **`/ops/*` gate** — `app/ops/layout.tsx` is a server component checking the
-   signed-in email against the `OPS_EMAILS` env allowlist (comma-separated);
-   non-ops users are redirected to `/`. DB-backed roles replace this in Session 2.
-   The "Switch to Ops view" menu item is hidden client-side via Clerk
-   `publicMetadata.isOps` (cosmetic only — the server gate is authoritative).
+4. **`/ops/*` gate** — `app/ops/layout.tsx` checks the DB role
+   (moderator/super_admin) **OR** the `OPS_EMAILS` env allowlist
+   (`lib/auth.isOpsUser`); the allowlist stays as a bootstrap so a bad roles table
+   can never lock Ops out. Server Actions re-check via `requireOps()` — the page
+   gate alone is never trusted. The "Switch to Ops view" menu item is hidden
+   client-side via Clerk `publicMetadata.isOps`, which is still **env-derived
+   only** (cosmetic): a DB-promoted moderator must also be in `OPS_EMAILS` to see
+   the nav item until role management lands.
 
 **User mirroring (the vendor seam, §3):** on first authenticated request,
 `ensureDbUser()` upserts the Clerk user into our `users` table keyed by `sst_email`
@@ -220,12 +256,17 @@ identity step. Sign-out goes through `useClerk().signOut({ redirectUrl: "/sign-i
 
 | Surface | Data | Actions |
 |---|---|---|
-| Dashboard, Companies, Company, Experience, Feed, Search | **Neon** | Save/Helpful = optimistic UI only (not persisted) |
-| Share form | drafts in **localStorage** (`inherit:draft:share`, `inherit:edit:<id>`) | Submit clears draft + shows success — **no DB write** |
-| My Posts | `lib/mock/data.ts → myPosts` | Restore/discard = toast only |
-| Under Review | mock experience preview | Edit/Withdraw buttons link only |
-| Ops queue / users | `mock → opsQueue` + hardcoded users | Approve/Reject/Hide/role-change = toast only |
-| Dashboard "your post under review" strip | hardcoded | — |
+| Dashboard, Companies, Company, Experience, Feed, Search | **Neon** | Save/Helpful = optimistic UI only (not persisted — Session 3) |
+| Share form | drafts in **localStorage**; `?edit=` prefill from **Neon** | Submit/Resubmit = real (`submitExperience`) |
+| My Posts / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real |
+| Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
+| Ops users tab | hardcoded list | role change = toast only (later session) |
+| Ops invite tab | placeholder | — (PRD §7 Flow F) |
+| Notifications | **rows written** on every transition | no UI yet (no bell, no email — email is roadmap #5) |
+
+The write path end-to-end: form (client) → `app/actions/experiences.submitExperience`
+→ Zod parse → `lib/write/experiences` core → one `db.batch()` → `revalidatePath` →
+client `router.push("/under-review")`.
 
 ---
 
@@ -238,6 +279,9 @@ npx tsc --noEmit     # typecheck
 npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
+npx tsx --env-file=.env.local db/verify-write-loop.ts
+                     # 39-assertion write-loop invariant test (real DB!) — leaves
+                     # test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
 
@@ -263,12 +307,14 @@ npx vercel deploy --prod --yes   # deploy
 1. ~~**Clerk auth**~~ ✅ **Done (Session 1)** — see §7. One manual item may remain:
    confirm the `sst.scaler.com` domain allowlist is set in the Clerk dashboard
    (Configure → Restrictions); the code backstop covers the gap meanwhile.
-2. **Write loop** (the big one): Zod schemas for the share form → Server Action
-   `submitExperience` (insert experience + rounds + blocks + tag links + tips,
-   status `under_review`) → Ops queue reads real pending rows (FIFO by `created_at`)
-   → approve/suggest-edits/reject actions → publish sets `published_at`/`reviewed_*`
-   → My Posts reads real rows → edit→re-review (live version hidden) → withdraw.
-   Hide-published writes `moderation_actions` (reason required).
+2. ~~**Write loop**~~ ✅ **Done (Session 2)** — see §4 conventions, §5 invariants, §8
+   seam. Verified by `db/verify-write-loop.ts` (39 assertions: FIFO incl.
+   resubmission ordering, visibility on every surface for hidden/deleted/pending,
+   reason requirements, audit rows, notifications, authorization edges).
+   Known gaps, deliberate: notifications have no UI/email yet; Ops "open full
+   post" is an inline expansion (no dedicated route); in-browser click-through as
+   the three roles still needs a manual pass with real SST accounts — the preview
+   sandbox can't complete Google OAuth.
 3. **Engagement**: Helpful toggle + saves as Server Actions; unique view counts
    server-side; cached `helpful_count` updated transactionally.
 4. **Invite-to-share**: CSV parse (the prototype's `outreach-page.jsx` has the full
@@ -307,3 +353,12 @@ npx vercel deploy --prod --yes   # deploy
 - The `…-thrishal-madasus-projects.vercel.app` URLs 401 by design (Vercel deployment
   protection); the public URL is `inherit-three.vercel.app`.
 - `db/seed.ts` **wipes the database**. Fine now; add a guard before real user data exists.
+- The share form never captures `experiences.overview` (it's a seed/detail-page field);
+  new submissions render the detail page without the Overview lead, and edits preserve
+  whatever overview the row already had. Decide in a later session whether the form
+  grows an Overview input or the column stays Ops/import-only.
+- After a reseed, Clerk `publicMetadata.dbUserId` on real accounts points at a dead
+  uuid. Harmless — authorship resolves by email (`requireDbUser`), not metadata — but
+  don't start trusting `dbUserId` for writes without re-syncing it.
+- The repo is a **local git repo only** (initialized Session 2); connecting GitHub +
+  Vercel git deploys is still the recommended next infra step (§9).

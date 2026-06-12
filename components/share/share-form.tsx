@@ -1,13 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { Fragment, useMemo, useRef, useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { batchLabelFromEmail, initialsOf, shortName } from "@/lib/user-display";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { PipeChip, Pill, PillDot } from "@/components/ui/pill";
+import { PipeChip } from "@/components/ui/pill";
 import { RoundEditor } from "@/components/share/round-editor";
 import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
@@ -31,38 +32,35 @@ import {
   emptyRound,
   wordCount,
 } from "@/lib/share-form";
-import { myPosts } from "@/lib/mock/data";
+import { submitExperience } from "@/app/actions/experiences";
+import { firstIssue, sanitizeShareForm, sharePayloadSchema } from "@/lib/validations/experience";
+import type { ReviewStatus } from "@/lib/types";
 
 const INPUT =
   "w-full h-10 rounded-md border border-border bg-surface px-3 text-sm text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 hover:border-border-hover focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]";
 const FIELD_LABEL = "flex items-baseline justify-between text-[13px] font-medium text-fg";
 
-export function ShareForm({ editId }: { editId?: string }) {
+export function ShareForm({
+  editId,
+  prefill,
+  editStatus,
+}: {
+  editId?: string;
+  prefill?: ShareDraftForm; // DB state of the post being edited (server-loaded)
+  editStatus?: ReviewStatus;
+}) {
+  const router = useRouter();
   const draftKey = editId ? editDraftKey(editId) : DRAFT_KEY;
-  const editPost = editId ? myPosts.find((p) => p.id === editId) : undefined;
 
-  // Initial form: edit draft → edit post prefill → new draft → empty.
+  // Initial form: in-progress edit draft → DB prefill → new draft → empty.
   const [form, setForm] = useState<ShareDraftForm>(() => {
     const existing = loadDraft(draftKey);
     if (existing) return existing.form;
-    if (editPost)
-      return emptyForm({
-        company: editPost.company,
-        role: editPost.role,
-        outcome: editPost.overallOutcome,
-        rounds: editPost.rounds.map((r) => ({
-          round: r.round,
-          status: r.status,
-          detailed: false,
-          platform: r.platform ?? "",
-          note: "",
-          blocks: [],
-        })),
-      });
+    if (prefill) return prefill;
     return emptyForm();
   });
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   // Debounced autosave — only after the user actually touches the form.
@@ -88,13 +86,25 @@ export function ShareForm({ editId }: { editId?: string }) {
     [form, step],
   );
 
-  const submit = () => {
+  // Validate locally first (instant feedback), then hand the raw form to the
+  // Server Action — it re-sanitizes and re-validates; never trust the client.
+  const submit = async () => {
+    const check = sharePayloadSchema.safeParse(sanitizeShareForm(form));
+    if (!check.success) {
+      toast(firstIssue(check.error));
+      return;
+    }
+    setSubmitting(true);
+    const result = await submitExperience(form, editId);
+    if (!result.ok) {
+      setSubmitting(false);
+      toast(result.error);
+      return;
+    }
     clearDraft(draftKey);
-    setSubmitted(true);
-    window.scrollTo(0, 0);
+    toast(editId ? "Resubmitted — back in the review queue" : "Submitted for review");
+    router.push("/under-review");
   };
-
-  if (submitted) return <SubmittedView form={form} isEdit={!!editId} />;
 
   return (
     <>
@@ -147,7 +157,7 @@ export function ShareForm({ editId }: { editId?: string }) {
             <div>
               <b className="font-semibold">You&apos;re editing an existing post.</b>{" "}
               Resubmitting sends it to the back of the review queue
-              {editPost?.status === "Approved" &&
+              {editStatus === "Approved" &&
                 " and pulls the live version offline until it's re-approved"}
               .
             </div>
@@ -176,8 +186,13 @@ export function ShareForm({ editId }: { editId?: string }) {
               Continue <Icon.arrow />
             </Button>
           ) : (
-            <Button variant="primary" onClick={submit}>
-              <Icon.check /> {editId ? "Resubmit for review" : "Submit for review"}
+            <Button variant="primary" onClick={submit} disabled={submitting}>
+              <Icon.check />{" "}
+              {submitting
+                ? "Submitting…"
+                : editId
+                  ? "Resubmit for review"
+                  : "Submit for review"}
             </Button>
           )}
         </div>
@@ -694,42 +709,5 @@ function Combo({
         </div>
       )}
     </label>
-  );
-}
-
-// ── Submitted view ───────────────────────────────────────────────────────────
-function SubmittedView({ form, isEdit }: { form: ShareDraftForm; isEdit: boolean }) {
-  useEffect(() => {
-    toast(isEdit ? "Resubmitted — back in the review queue" : "Submitted for review");
-  }, [isEdit]);
-
-  return (
-    <>
-      <TopNav showSearch={false} />
-      <main className="mx-auto max-w-[640px] px-7 pb-24 pt-16 text-center">
-        <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-green-border bg-green-soft text-green">
-          <Icon.check className="size-6" />
-        </div>
-        <Pill tone="blue" className="mx-auto">
-          <PillDot />
-          Under Review
-        </Pill>
-        <h1 className="mb-2 mt-3 text-[26px] font-bold tracking-[-0.02em]">
-          {isEdit ? "Back in the review queue" : "Thanks — it's in the queue"}
-        </h1>
-        <p className="mx-auto mb-8 max-w-[460px] text-sm leading-[1.6] text-fg-2">
-          Your {form.company || "—"} · {form.role || "—"} experience joined the back
-          of the Placement Ops queue (FIFO). We&apos;ll email you the moment it goes
-          live.
-        </p>
-        <div className="flex justify-center gap-2.5">
-          <Button href="/under-review">View status</Button>
-          <Button href="/me">My posts</Button>
-          <Button href="/share" variant="primary">
-            <Icon.plus /> Share another
-          </Button>
-        </div>
-      </main>
-    </>
   );
 }

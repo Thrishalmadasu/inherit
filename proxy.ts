@@ -8,9 +8,33 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
+// /dev-login is the DEV-ONLY ticket consumer (docs/HANDBOOK.md §7) — it must
+// be reachable signed-out, and the page itself 404s outside `next dev`.
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/dev-login(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Dev impersonation (handbook §7): under `next dev` only, the cookie set by
+  // /dev-login stands in for a session; lib/auth.ts resolves the actual user.
+  // Signed-out dev traffic goes to the /dev-login picker, NOT /sign-in —
+  // Clerk dev instances bounce through *.clerk.accounts.dev on the sign-in
+  // page, which headless/preview browsers (localhost-only) cannot follow.
+  if (process.env.NODE_ENV === "development") {
+    if (req.cookies.has("dev-impersonate")) {
+      // Clerk's own pages can't render under impersonation (the layout
+      // mounts no ClerkProvider) — bounce them back into the app.
+      if (isPublicRoute(req) && !req.nextUrl.pathname.startsWith("/dev-login"))
+        return NextResponse.redirect(new URL("/", req.url));
+      return;
+    }
+    if (isPublicRoute(req)) return;
+    const { userId } = await auth();
+    if (!userId) return NextResponse.redirect(new URL("/dev-login", req.url));
+    return;
+  }
   if (isPublicRoute(req)) return;
   const { userId } = await auth();
   if (!userId) {

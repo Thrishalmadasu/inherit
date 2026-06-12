@@ -2,11 +2,29 @@
 // Clerk owns sessions; our `users` table stays the system of record for
 // authorship/roles so swapping the auth vendor never touches the data model.
 import { clerkClient, currentUser } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import { batchYearFromEmail, cleanPersonName } from "@/lib/user-display";
+import type { Viewer } from "@/lib/viewer";
 
 export const SST_DOMAIN = "sst.scaler.com";
+
+// ── Dev impersonation (handbook §7) ──────────────────────────────────────────
+// The preview/headless browser can never complete a Clerk dev-instance flow
+// (it requires top-level navigation to *.clerk.accounts.dev). Under `next
+// dev` ONLY, a `dev-impersonate` cookie (set via /dev-login?as=<email>) short-
+// circuits BOTH auth helpers to a seeded users row — Clerk is never consulted.
+// Three gates keep this inert in production: NODE_ENV === "development"
+// (always "production" on Vercel builds), the cookie, and the users row must
+// exist. The cookie is set by a route that itself 404s outside dev.
+export const DEV_IMPERSONATE_COOKIE = "dev-impersonate";
+
+async function devImpersonationEmail(): Promise<string | null> {
+  if (process.env.NODE_ENV !== "development") return null;
+  const jar = await cookies();
+  return jar.get(DEV_IMPERSONATE_COOKIE)?.value ?? null;
+}
 
 // OPS_EMAILS: comma-separated allowlist (env). Interim gate until DB roles
 // land with the write loop (Session 2).
@@ -22,7 +40,7 @@ export function isOpsEmail(email?: string | null): boolean {
 export type AuthGate =
   | { status: "signed-out" }
   | { status: "wrong-domain"; email: string }
-  | { status: "ok"; email: string };
+  | { status: "ok"; email: string; viewer: Viewer };
 
 // Mirror the Clerk user into our `users` table (upsert by sst_email) on first
 // sign-in. After the first mirror we stamp Clerk publicMetadata with the DB id
@@ -30,6 +48,18 @@ export type AuthGate =
 // the client nav can show/hide the Ops link (the authoritative gate is
 // server-side in app/ops/layout.tsx). Re-syncs if OPS_EMAILS changes.
 export async function ensureDbUser(): Promise<AuthGate> {
+  const devEmail = await devImpersonationEmail();
+  if (devEmail) {
+    const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, devEmail));
+    if (row)
+      return {
+        status: "ok",
+        email: row.sstEmail,
+        viewer: { name: row.name, email: row.sstEmail, isOps: isOpsUser(row), dev: true },
+      };
+    return { status: "signed-out" }; // stale cookie (e.g. after a reseed)
+  }
+
   const user = await currentUser();
   if (!user) return { status: "signed-out" };
 
@@ -37,17 +67,25 @@ export async function ensureDbUser(): Promise<AuthGate> {
   // Backstop to the Clerk dashboard domain allowlist — never trust one layer.
   if (!email.endsWith(`@${SST_DOMAIN}`)) return { status: "wrong-domain", email };
 
+  // Display name mirrors what the client previously read from useUser():
+  // the Google profile name, cleaned — NOT a per-request DB lookup, so the
+  // metadata fast-path below stays a fast path.
+  const viewer: Viewer = {
+    name: cleanPersonName(user.fullName) || shortFromEmail(email),
+    email,
+    isOps: isOpsEmail(email),
+    dev: false,
+  };
   const meta = user.publicMetadata as { dbUserId?: string; isOps?: boolean };
-  const isOps = isOpsEmail(email);
-  if (meta.dbUserId && meta.isOps === isOps) return { status: "ok", email };
+  const isOps = viewer.isOps;
+  if (meta.dbUserId && meta.isOps === isOps) return { status: "ok", email, viewer };
 
   // Name is written on first insert only — our `users` table is the system of
   // record, and Google profile names are unreliable ("THRISHAL ."). Existing
   // rows (seeded or Ops-curated) keep their name.
-  const name = cleanPersonName(user.fullName) || shortFromEmail(email);
   const [inserted] = await db
     .insert(s.users)
-    .values({ sstEmail: email, name, batchYear: batchYearFromEmail(email) })
+    .values({ sstEmail: email, name: viewer.name, batchYear: batchYearFromEmail(email) })
     .onConflictDoNothing({ target: s.users.sstEmail })
     .returning({ id: s.users.id });
   const row =
@@ -61,7 +99,7 @@ export async function ensureDbUser(): Promise<AuthGate> {
   await client.users.updateUserMetadata(user.id, {
     publicMetadata: { dbUserId: row.id, isOps },
   });
-  return { status: "ok", email };
+  return { status: "ok", email, viewer };
 }
 
 // ── Action-layer authorization (write loop, Session 2) ──────────────────────
@@ -71,6 +109,14 @@ export async function ensureDbUser(): Promise<AuthGate> {
 export type DbUser = typeof s.users.$inferSelect;
 
 export async function requireDbUser(): Promise<DbUser> {
+  const devEmail = await devImpersonationEmail();
+  if (devEmail) {
+    const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, devEmail));
+    if (!row)
+      throw new Error(`Dev impersonation: no users row for ${devEmail} — reseed or /dev-login?off`);
+    return row;
+  }
+
   const user = await currentUser();
   const email = (user?.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
   if (!user || !email.endsWith(`@${SST_DOMAIN}`)) throw new Error("Not signed in");

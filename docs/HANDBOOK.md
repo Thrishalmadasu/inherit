@@ -254,10 +254,39 @@ write. Authorship/roles always reference *our* `users.id` — swapping auth vend
 never touches the data model. If `OPS_EMAILS` changes, the metadata re-syncs on the
 user's next request.
 
-**Client-side user display:** `useUser()` + the pure helpers in
+**Client-side user display:** the `Viewer` DTO (`lib/viewer.tsx`) — resolved
+SERVER-side by `ensureDbUser()` in the root layout and passed down via
+`ViewerProvider`; client components call `useViewer()` + the pure helpers in
 `lib/user-display.ts` (`shortName` → "Thrishal M.", `initialsOf`,
-`batchLabelFromEmail` → "'27"). Used by the top-nav user menu and the share form's
-identity step. Sign-out goes through `useClerk().signOut({ redirectUrl: "/sign-in" })`.
+`batchLabelFromEmail` → "'27"). Used by the top-nav user menu and the share
+form's identity step. Client components do NOT call Clerk's `useUser()` —
+identity has one source of truth and works under dev impersonation. The only
+client Clerk call left is sign-out (`useClerk().signOut`), isolated in
+`ClerkSignOutButton` so it never runs without a ClerkProvider. The Ops nav
+item is now driven by `viewer.isOps` = DB role ∪ `OPS_EMAILS` (no longer the
+env-only Clerk `publicMetadata.isOps`, which remains only as the mirror's
+re-sync trigger).
+
+**Dev impersonation (local only — how headless browsers test):**
+Clerk DEV instances do a top-level handshake redirect through
+`*.clerk.accounts.dev` on every page load, which preview/headless browsers
+(localhost-only) cannot follow — so under `next dev` the app can run with
+Clerk bypassed entirely:
+
+- **`/dev-login`** (route handler, hard **404 in production**): HTML picker of
+  seeded users. `?as=<sst_email>` validates the users row and sets an httpOnly
+  `dev-impersonate` cookie; `?off` clears it.
+- **`lib/auth.ts`**: `ensureDbUser()` + `requireDbUser()` check that cookie
+  FIRST — but only when `NODE_ENV === "development"` (always `"production"`
+  on Vercel builds). They resolve directly to our users row; Clerk is never
+  consulted. Three gates: NODE_ENV + cookie + the row must exist.
+- **`proxy.ts` (dev branch)**: signed-out → `/dev-login` picker (never
+  `/sign-in`); while impersonating, Clerk's own pages bounce home.
+- **`app/layout.tsx`**: under impersonation, ClerkProvider is NOT mounted —
+  clerk-js never loads, so no accounts.dev redirect can occur.
+
+Real Google sign-in still works locally in a normal browser: with no cookie,
+visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 
 **Styling:** Clerk components are themed once via the `appearance.variables` prop on
 `<ClerkProvider>` in `app/layout.tsx`, with direct values mirroring the
@@ -286,6 +315,7 @@ client `router.push("/under-review")`.
 ```bash
 cd web
 npm run dev          # local dev (auto port)
+                     # → signed-out lands on /dev-login (dev impersonation picker, §7)
 npx tsc --noEmit     # typecheck
 npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
@@ -323,16 +353,17 @@ npx vercel deploy --prod --yes   # deploy
    resubmission ordering, visibility on every surface for hidden/deleted/pending,
    reason requirements, audit rows, notifications, authorization edges).
    Known gaps, deliberate: notifications have no UI/email yet; Ops "open full
-   post" is an inline expansion (no dedicated route); in-browser click-through as
-   the three roles still needs a manual pass with real SST accounts — the preview
-   sandbox can't complete Google OAuth.
+   post" is an inline expansion (no dedicated route). In-browser click-through
+   as the three roles is now possible locally via dev impersonation (§7);
+   a pass with real Google-OAuth SST accounts on prod is still worthwhile
+   before launch.
 3. ~~**Engagement**~~ ✅ **Done (Session 3)** — Helpful toggle + saves as Server
    Actions (`lib/write/engagement.ts`, §5 invariants), unique view counts via
    `viewed_experiences`, Saved tab on /me. "Most helpful / Most viewed" sorts on
    Feed/Company now run on real columns — verified in `db/verify-write-loop.ts`
    (19 new assertions: idempotence, counter↔row consistency, view dedupe,
-   saved-list visibility). In-browser pass with real SST accounts still pending
-   (same OAuth limitation as #2).
+   saved-list visibility). In-browser pass now unblocked by dev impersonation
+   (§7); verified server-rendered flows as student + moderator locally.
 4. **Invite-to-share**: CSV parse (the prototype's `outreach-page.jsx` has the full
    reference implementation incl. header aliases + dedupe buckets) + `invite_*` tables.
 5. **Email (Resend)** behind an `EmailSender` interface (console stub first), then
@@ -362,6 +393,11 @@ npx vercel deploy --prod --yes   # deploy
   L&D sheet clean. *Open question owner: who curates the seed list (PRD §15 Q5).*
 
 ## 12. Known quirks
+- After a reseed, a `dev-impersonate` cookie keeps working (it's matched by
+  email, which the seed recreates) — but if you impersonated a non-seeded user,
+  hit `/dev-login?off`. The embedded preview pane can NEVER complete real Clerk
+  sign-in (it blocks non-localhost navigation) — that's what dev impersonation
+  is for; use a normal browser for the real OAuth flow.
 - `<body suppressHydrationWarning>` in `app/layout.tsx` — tolerates browser-extension
   attribute injection (e.g. Bitdefender's `bis_register`). Scoped to body attributes only.
 - Local dev port is auto-assigned because Docker

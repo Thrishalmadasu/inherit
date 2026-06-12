@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useClerk, useUser } from "@clerk/nextjs";
+import { useClerk } from "@clerk/nextjs";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
+import { useViewer } from "@/lib/viewer";
 import { batchLabelFromEmail, initialsOf, shortName } from "@/lib/user-display";
 
 const ITEM =
@@ -13,8 +14,9 @@ const ITEM =
 export function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  // Server-resolved identity DTO (lib/viewer) — not Clerk's useUser(), so the
+  // byline renders identically under real sessions and dev impersonation.
+  const viewer = useViewer();
 
   useEffect(() => {
     if (!open) return;
@@ -25,14 +27,13 @@ export function UserMenu() {
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
 
-  // The proxy guarantees a session on every app route; this only blanks
-  // during the initial client load.
-  if (!user) return <div className="h-9 w-[140px]" aria-hidden />;
+  // The proxy guarantees a session on every app route; null only on the
+  // signed-out routes, which don't render the nav.
+  if (!viewer) return <div className="h-9 w-[140px]" aria-hidden />;
 
-  const email = user.primaryEmailAddress?.emailAddress ?? "";
-  const name = shortName(user.fullName, email);
+  const { email, isOps } = viewer;
+  const name = shortName(viewer.name, email);
   const batch = batchLabelFromEmail(email);
-  const isOps = user.publicMetadata?.isOps === true;
 
   return (
     <div className="relative" ref={ref}>
@@ -45,7 +46,7 @@ export function UserMenu() {
         )}
       >
         <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-blue to-blue-deep text-xs font-semibold text-white">
-          {initialsOf(user.fullName, email)}
+          {initialsOf(viewer.name, email)}
         </span>
         <span className="flex flex-col leading-[1.15]">
           <span className="text-[12.5px] font-medium">{name}</span>
@@ -85,15 +86,34 @@ export function UserMenu() {
             </>
           )}
           <div className="mx-1 my-1.5 h-px bg-border" />
-          <button
-            type="button"
-            onClick={() => signOut({ redirectUrl: "/sign-in" })}
-            className={cn(ITEM, "text-red hover:bg-red-soft [&_svg]:text-red")}
-          >
-            <Icon.arrow /> Sign out
-          </button>
+          {viewer.dev ? (
+            <button
+              type="button"
+              onClick={() => (window.location.href = "/dev-login?off")}
+              className={cn(ITEM, "text-red hover:bg-red-soft [&_svg]:text-red")}
+            >
+              <Icon.arrow /> Sign out
+            </button>
+          ) : (
+            <ClerkSignOutButton />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// Separate component so useClerk() is only called when ClerkProvider exists —
+// under dev impersonation the layout doesn't mount Clerk at all (§7).
+function ClerkSignOutButton() {
+  const { signOut } = useClerk();
+  return (
+    <button
+      type="button"
+      onClick={() => signOut({ redirectUrl: "/sign-in" })}
+      className={cn(ITEM, "text-red hover:bg-red-soft [&_svg]:text-red")}
+    >
+      <Icon.arrow /> Sign out
+    </button>
   );
 }

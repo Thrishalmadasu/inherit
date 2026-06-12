@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ensureDbUser } from "@/lib/auth";
+import { ViewerProvider } from "@/lib/viewer";
 import { RestrictedScreen } from "@/components/restricted-screen";
 import "./globals.css";
 
@@ -49,6 +50,11 @@ export default async function RootLayout({
 }>) {
   // Domain gate + first-sign-in mirror into our `users` table (handbook §3).
   const gate = await ensureDbUser();
+  // Dev impersonation (§7): skip ClerkProvider entirely — clerk-js on a DEV
+  // instance does a top-level handshake redirect through *.clerk.accounts.dev
+  // on EVERY page load, which localhost-only preview browsers can't follow.
+  // Nothing under impersonation consumes Clerk (identity comes from Viewer).
+  const devImpersonation = gate.status === "ok" && gate.viewer.dev;
 
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
@@ -57,18 +63,24 @@ export default async function RootLayout({
           This tolerates those attribute-only diffs on <body> only — it does
           NOT hide real hydration mismatches deeper in the tree. */}
       <body className="min-h-full antialiased" suppressHydrationWarning>
-        <ClerkProvider
-          appearance={clerkAppearance}
-          signInUrl="/sign-in"
-          signUpUrl="/sign-up"
-          afterSignOutUrl="/sign-in"
-        >
-          {gate.status === "wrong-domain" ? (
-            <RestrictedScreen email={gate.email} />
-          ) : (
-            children
-          )}
-        </ClerkProvider>
+        {devImpersonation ? (
+          <ViewerProvider viewer={gate.viewer}>{children}</ViewerProvider>
+        ) : (
+          <ClerkProvider
+            appearance={clerkAppearance}
+            signInUrl="/sign-in"
+            signUpUrl="/sign-up"
+            afterSignOutUrl="/sign-in"
+          >
+            {gate.status === "wrong-domain" ? (
+              <RestrictedScreen email={gate.email} />
+            ) : (
+              <ViewerProvider viewer={gate.status === "ok" ? gate.viewer : null}>
+                {children}
+              </ViewerProvider>
+            )}
+          </ClerkProvider>
+        )}
       </body>
     </html>
   );

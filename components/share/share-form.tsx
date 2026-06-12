@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useViewer } from "@/lib/viewer";
 import { batchLabelFromEmail, initialsOf, shortName } from "@/lib/user-display";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
@@ -523,9 +523,9 @@ function StepIdentity({
   const taggedBlocks = form.rounds.flatMap((r) => r.blocks).filter((b) => b.topics.length).length;
   const tips = form.tips.filter((t) => t.text.trim()).length;
 
-  const { user } = useUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const name = shortName(user?.fullName, email);
+  const viewer = useViewer();
+  const email = viewer?.email ?? "";
+  const name = shortName(viewer?.name, email);
   const batch = batchLabelFromEmail(email);
   const byline = batch ? `${name} · ${batch}` : name;
   const anonByline = batch ? `SST ${batch} student` : "SST student";
@@ -545,7 +545,7 @@ function StepIdentity({
         <IdentityCard
           active={!form.anonymous}
           onClick={() => update({ anonymous: false })}
-          circle={initialsOf(user?.fullName, email)}
+          circle={initialsOf(viewer?.name, email)}
           title={`Post as ${byline}`}
           sub="Your name and batch appear on the post. Builds peer reputation."
         />

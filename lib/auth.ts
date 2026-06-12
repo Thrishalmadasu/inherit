@@ -20,8 +20,23 @@ export const SST_DOMAIN = "sst.scaler.com";
 // exist. The cookie is set by a route that itself 404s outside dev.
 export const DEV_IMPERSONATE_COOKIE = "dev-impersonate";
 
+// Defense in depth — ALL must hold, and any single one keeps production safe:
+//  1. DEV_AUTH_BYPASS=1 — explicit opt-in, lives only in gitignored
+//     .env.local; never set on Vercel. Default OFF even for `next dev`.
+//  2. NODE_ENV === "development" — always "production" on Vercel builds.
+//  3. !VERCEL — Vercel sets this env var unconditionally, so even a
+//     misconfigured NODE_ENV cannot wake the bypass up there.
+// (Then the cookie must be present AND resolve to an existing users row.)
+export function isDevBypassEnabled(): boolean {
+  return (
+    process.env.DEV_AUTH_BYPASS === "1" &&
+    process.env.NODE_ENV === "development" &&
+    !process.env.VERCEL
+  );
+}
+
 async function devImpersonationEmail(): Promise<string | null> {
-  if (process.env.NODE_ENV !== "development") return null;
+  if (!isDevBypassEnabled()) return null;
   const jar = await cookies();
   return jar.get(DEV_IMPERSONATE_COOKIE)?.value ?? null;
 }

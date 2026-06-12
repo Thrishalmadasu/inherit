@@ -277,9 +277,15 @@ Clerk bypassed entirely:
   seeded users. `?as=<sst_email>` validates the users row and sets an httpOnly
   `dev-impersonate` cookie; `?off` clears it.
 - **`lib/auth.ts`**: `ensureDbUser()` + `requireDbUser()` check that cookie
-  FIRST — but only when `NODE_ENV === "development"` (always `"production"`
-  on Vercel builds). They resolve directly to our users row; Clerk is never
-  consulted. Three gates: NODE_ENV + cookie + the row must exist.
+  FIRST — but only behind `isDevBypassEnabled()`. They resolve directly to our
+  users row; Clerk is never consulted. **Five independent conditions**, any one
+  of which keeps production safe: `DEV_AUTH_BYPASS=1` (explicit opt-in, lives
+  ONLY in gitignored `.env.local` — never set it on Vercel) + `NODE_ENV ===
+  "development"` (always `"production"` on Vercel builds) + `!VERCEL` (Vercel
+  sets that var unconditionally, so even a misconfigured NODE_ENV can't wake
+  the bypass there) + the cookie + the users row must exist. Verified by
+  running `next start` (prod posture, opt-in present → 404 + forged cookie
+  ignored) and `next dev` without the opt-in (same denials).
 - **`proxy.ts` (dev branch)**: signed-out → `/dev-login` picker (never
   `/sign-in`); while impersonating, Clerk's own pages bounce home.
 - **`app/layout.tsx`**: under impersonation, ClerkProvider is NOT mounted —
@@ -333,6 +339,7 @@ npx vercel deploy --prod --yes   # deploy
   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_test_…` for now) |
   | `CLERK_SECRET_KEY` | Clerk backend key (`sk_test_…` for now) |
   | `OPS_EMAILS` | comma-separated `/ops` allowlist (interim, until DB roles) |
+  | `DEV_AUTH_BYPASS` | `1` enables dev impersonation (§7) — **`.env.local` ONLY, never Vercel** |
 
   Still on Clerk **dev-instance** keys — before real launch, create the Clerk
   production instance and swap both keys.
@@ -345,9 +352,10 @@ npx vercel deploy --prod --yes   # deploy
 
 ## 10. Roadmap from here (the order matters)
 
-1. ~~**Clerk auth**~~ ✅ **Done (Session 1)** — see §7. One manual item may remain:
-   confirm the `sst.scaler.com` domain allowlist is set in the Clerk dashboard
-   (Configure → Restrictions); the code backstop covers the gap meanwhile.
+1. ~~**Clerk auth**~~ ✅ **Done (Session 1)** — see §7. The `sst.scaler.com`
+   domain allowlist in the Clerk dashboard (Configure → Restrictions) was
+   **confirmed set by Thrishal on 2026-06-12**; the code backstop remains as
+   the second layer.
 2. ~~**Write loop**~~ ✅ **Done (Session 2)** — see §4 conventions, §5 invariants, §8
    seam. Verified by `db/verify-write-loop.ts` (39 assertions: FIFO incl.
    resubmission ordering, visibility on every surface for hidden/deleted/pending,

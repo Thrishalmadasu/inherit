@@ -22,7 +22,14 @@ export default clerkMiddleware(async (auth, req) => {
   // Signed-out dev traffic goes to the /dev-login picker, NOT /sign-in —
   // Clerk dev instances bounce through *.clerk.accounts.dev on the sign-in
   // page, which headless/preview browsers (localhost-only) cannot follow.
-  if (process.env.NODE_ENV === "development") {
+  // Gates mirror lib/auth.isDevBypassEnabled (inlined: importing lib/auth
+  // would pull the DB client into the proxy bundle): explicit opt-in env var
+  // (gitignored .env.local only) + dev runtime + never on Vercel.
+  const devBypass =
+    process.env.DEV_AUTH_BYPASS === "1" &&
+    process.env.NODE_ENV === "development" &&
+    !process.env.VERCEL;
+  if (devBypass) {
     if (req.cookies.has("dev-impersonate")) {
       // Clerk's own pages can't render under impersonation (the layout
       // mounts no ClerkProvider) — bounce them back into the app.

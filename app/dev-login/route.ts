@@ -1,6 +1,7 @@
-// DEV-ONLY impersonation switch (handbook §7). Hard 404 outside `next dev` —
-// NODE_ENV is "production" on every Vercel build, and even if it weren't, the
-// cookie this sets is only honored when lib/auth.ts sees NODE_ENV=development.
+// DEV-ONLY impersonation switch (handbook §7). Hard 404 unless EVERY gate in
+// lib/auth.isDevBypassEnabled holds (explicit DEV_AUTH_BYPASS=1 opt-in from
+// gitignored .env.local + NODE_ENV=development + not on Vercel) — and the
+// cookie this sets is only honored behind those same gates.
 //
 //   /dev-login                               → picker (click a seeded user)
 //   /dev-login?as=<seeded users.sst_email>   → impersonate (validates the row)
@@ -11,10 +12,10 @@
 // *.clerk.accounts.dev, which headless/preview browsers can't follow.
 import { NextResponse, type NextRequest } from "next/server";
 import { db, schema as s } from "@/lib/db";
-import { DEV_IMPERSONATE_COOKIE } from "@/lib/auth";
+import { DEV_IMPERSONATE_COOKIE, isDevBypassEnabled } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  if (process.env.NODE_ENV !== "development") return new NextResponse(null, { status: 404 });
+  if (!isDevBypassEnabled()) return new NextResponse(null, { status: 404 });
 
   const home = NextResponse.redirect(new URL("/", req.url));
 

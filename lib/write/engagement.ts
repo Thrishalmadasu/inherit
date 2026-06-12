@@ -73,24 +73,17 @@ export async function setSavedCore(actor: DbUser, expId: string, on: boolean): P
   }
 }
 
-// First view by this user bumps view_count; every later view is a no-op
-// (the viewed_experiences PK is the dedupe). Callers treat this as
-// fire-and-forget — it never throws on a non-visible post.
-export async function recordViewCore(actor: DbUser, expId: string): Promise<void> {
+// Every detail-page open counts (product decision 2026-06-12 — total opens,
+// not unique viewers; reloads and revisits included). Still server-side and
+// only fired from the page mount, so router prefetch can't inflate it.
+// Callers treat this as fire-and-forget — a non-visible post is a no-op.
+export async function recordViewCore(_actor: DbUser, expId: string): Promise<void> {
   await db.execute(sql`
-    with ins as (
-      insert into viewed_experiences (user_id, experience_id)
-      select ${actor.id}, e.id
-        from experiences e
-       where e.id = ${expId}
-         and e.review_status = 'approved'
-         and e.deleted_at is null
-         and e.hidden_at is null
-      on conflict do nothing
-      returning 1
-    )
     update experiences
-       set view_count = view_count + (select count(*) from ins)
+       set view_count = view_count + 1
      where id = ${expId}
+       and review_status = 'approved'
+       and deleted_at is null
+       and hidden_at is null
   `);
 }

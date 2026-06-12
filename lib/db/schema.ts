@@ -115,7 +115,7 @@ export const experiences = pgTable("experiences", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   reviewNotes: text("review_notes"),
   helpfulCount: integer("helpful_count").notNull().default(0), // cached from reactions
-  viewCount: integer("view_count").notNull().default(0), // server-side unique viewers
+  viewCount: integer("view_count").notNull().default(0), // total detail-page opens (server-side)
   durationMinutes: integer("duration_minutes"),
   importedFromArchive: boolean("imported_from_archive").notNull().default(false),
   withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
@@ -208,22 +208,6 @@ export const reactions = pgTable(
 
 export const savedExperiences = pgTable(
   "saved_experiences",
-  {
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id),
-    experienceId: text("experience_id")
-      .notNull()
-      .references(() => experiences.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [primaryKey({ columns: [t.userId, t.experienceId] })],
-);
-
-// One row per user×experience ever viewed — `experiences.view_count` counts
-// UNIQUE viewers, and this PK is what makes the increment once-per-user.
-export const viewedExperiences = pgTable(
-  "viewed_experiences",
   {
     userId: uuid("user_id")
       .notNull()

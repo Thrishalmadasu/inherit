@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
@@ -31,8 +31,13 @@ export function ExperienceView({
   const helpfulCount =
     (exp.helpful ?? 0) + (helpful === viewer.helpful ? 0 : helpful ? 1 : -1);
 
-  // Count this visit exactly once per user, server-side (idempotent).
+  // Every page open counts one view. The ref de-dupes within a single mount
+  // (React dev strict-mode runs effects twice); a reload or revisit is a new
+  // mount and counts again — that's the product intent.
+  const viewSent = useRef<string | null>(null);
   useEffect(() => {
+    if (viewSent.current === exp.id) return;
+    viewSent.current = exp.id;
     void recordView(exp.id);
   }, [exp.id]);
 

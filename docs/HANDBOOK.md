@@ -30,7 +30,7 @@ next person interviewing at a company walks in with the batch's collective intel
 | Ops users tab | ✅ UI complete | still hardcoded; role management is a later session |
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
-| Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views unique per user; Saved tab on /me |
+| Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
 | Invite-to-share (CSV outreach) | ⏳ Placeholder tab | full spec in PRD §7 Flow F |
 | Email (Resend) + L&D Sheets sync | ⏳ Not started | last; behind interfaces per plan |
 
@@ -144,7 +144,6 @@ users ──< experiences ──< rounds ──< content_blocks >──< topic_t
                 ├──< prep_tips
                 ├──< reactions          (Helpful-only; UNIQUE(user, experience))
                 ├──< saved_experiences  (PK(user, experience))
-                ├──< viewed_experiences (PK(user, experience) — unique-view dedupe)
                 └──< notifications
 companies ──< experiences
 role_change_audit / moderation_actions  (append-only audit)
@@ -161,10 +160,13 @@ flags                                    (reserved, no UI in V1)
   that inserts/deletes the row — a CTE counts how many rows actually changed and
   the counter moves by exactly that (`lib/write/engagement.ts`), so repeated or
   concurrent calls can never make the counter drift from the rows.
-- **Views are unique per user** — `viewed_experiences` PK dedupes; `view_count`
-  increments only on a user's FIRST visit. The beat is fired from a client
-  `useEffect` on the experience page (a deliberate Server Action), never from the
-  server render, so router prefetch can't inflate counts.
+- **Views count every detail-page open** (product decision 2026-06-12 — total
+  opens, not unique viewers; reloads/revisits included). A guarded `view_count + 1`
+  on visible rows only. The beat is fired from a client `useEffect` on the
+  experience page (a deliberate Server Action), never from the server render, so
+  router prefetch can't inflate counts; a ref de-dupes within one mount (React
+  dev strict mode). The `viewed_experiences` dedupe table existed for a few hours
+  on 2026-06-12 and was dropped with this decision.
 - **Author delete ≠ Ops hide** — separate column sets (`deleted_*` vs `hidden_*`) so
   accountability is never ambiguous. Hide requires a reason (enforced in the action layer).
 - **Round is a container** — `rounds.name` is a label ("OA", "Tech 1", custom). Content is
@@ -189,7 +191,7 @@ flags                                    (reserved, no UI in V1)
   didn't list it but design §17.5 requires it).
 
 **Schema changes:** still `drizzle-kit push` (Session 2 added one enum value,
-`post_hidden`; Session 3 added the `viewed_experiences` table, this way). The planned switch to generated migrations did NOT happen
+`post_hidden`; Session 3 added — and same-day dropped — `viewed_experiences`, this way). The planned switch to generated migrations did NOT happen
 with the write loop — it moved to the hardening item (§10 #6) and must land before
 real user data exists. Until then push remains the only mechanism; be careful.
 
@@ -302,7 +304,7 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 
 | Surface | Data | Actions |
 |---|---|---|
-| Dashboard, Companies, Company, Experience, Feed, Search | **Neon** | Save/Helpful = real Server Actions (optimistic w/ rollback); views counted once per user on page mount |
+| Dashboard, Companies, Company, Experience, Feed, Search | **Neon** | Save/Helpful = real Server Actions (optimistic w/ rollback); every experience-page open counts a view (server-side, on mount) |
 | Share form | drafts in **localStorage**; `?edit=` prefill from **Neon** | Submit/Resubmit = real (`submitExperience`) |
 | My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
@@ -366,8 +368,8 @@ npx vercel deploy --prod --yes   # deploy
    a pass with real Google-OAuth SST accounts on prod is still worthwhile
    before launch.
 3. ~~**Engagement**~~ ✅ **Done (Session 3)** — Helpful toggle + saves as Server
-   Actions (`lib/write/engagement.ts`, §5 invariants), unique view counts via
-   `viewed_experiences`, Saved tab on /me. "Most helpful / Most viewed" sorts on
+   Actions (`lib/write/engagement.ts`, §5 invariants), view counts (every
+   detail-page open; changed from unique-per-user the same day), Saved tab on /me. "Most helpful / Most viewed" sorts on
    Feed/Company now run on real columns — verified in `db/verify-write-loop.ts`
    (19 new assertions: idempotence, counter↔row consistency, view dedupe,
    saved-list visibility). In-browser pass now unblocked by dev impersonation
@@ -388,6 +390,8 @@ npx vercel deploy --prod --yes   # deploy
 ## 11. For the product team — decisions already locked
 
 - **Helpful-only voting** (no "Not helpful") — decided 2026-06-12, PRD updated everywhere.
+- **View count = total detail-page opens**, not unique viewers (reloads count) —
+  decided 2026-06-12, replacing the same-day unique-viewer implementation.
 - **Every post reviewed before publish; FIFO queue, no fast-tracking** (PRD §10).
 - **Anonymity:** default real name; per-post anonymous toggle; Ops always sees identity.
 - **SST-only, permanently** — enforced since Session 1 (Clerk allowlist + code

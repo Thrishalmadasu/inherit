@@ -284,16 +284,16 @@ async function main() {
   }
   ok(err.includes("not found"), "helpful on a non-live post refused");
 
-  console.log("\n— engagement: unique view counts —");
+  console.log("\n— engagement: view counts (every open counts) —");
   await recordViewCore(student2, id1);
   await recordViewCore(student2, id1);
-  ok((await expRow(id1)).viewCount === 1, "same user viewing twice counts once");
+  ok((await expRow(id1)).viewCount === 2, "same user opening twice counts twice (total opens)");
   await recordViewCore(moderator, id1);
-  ok((await expRow(id1)).viewCount === 2, "distinct viewers count once each");
+  ok((await expRow(id1)).viewCount === 3, "every viewer's open adds one");
   await recordViewCore(student1, id3); // not live → no-op, no throw
   ok((await expRow(id3)).viewCount === 0, "views on a non-live post don't count");
   ok(
-    (await listFeed()).find((e) => e.id === id1)?.views === 2,
+    (await listFeed()).find((e) => e.id === id1)?.views === 3,
     "feed card carries the real count (the Most-viewed sort input)",
   );
 

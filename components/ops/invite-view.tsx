@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
 import { useViewer } from "@/lib/viewer";
 import { sendInvites } from "@/app/actions/invites";
+import type { SendInvitesResult } from "@/lib/write/invites";
 import { FROM_ADDRESS, FROM_NAME } from "@/lib/email";
 import {
   DEFAULT_BODY,
@@ -37,9 +38,11 @@ const MONO = "font-mono";
 export function InviteView({
   alreadyShared,
   alreadyInvited,
+  emailLive,
 }: {
   alreadyShared: string[];
   alreadyInvited: string[];
+  emailLive: boolean;
 }) {
   const router = useRouter();
   const viewer = useViewer();
@@ -51,7 +54,7 @@ export function InviteView({
   const [filter, setFilter] = useState<"all" | RecipientStatus>("all");
   const [showConfirm, setShowConfirm] = useState(false);
   const [sending, setSending] = useState(false);
-  const [justSent, setJustSent] = useState<number | null>(null);
+  const [justSent, setJustSent] = useState<SendInvitesResult | null>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [focusTarget, setFocusTarget] = useState<"subject" | "body">("body");
@@ -120,7 +123,7 @@ export function InviteView({
       toast(result.error);
       return;
     }
-    setJustSent(result.data.sent);
+    setJustSent(result.data);
     clearCsv();
     // refresh the server-loaded dedupe props so the next CSV skips these emails
     router.refresh();
@@ -135,10 +138,21 @@ export function InviteView({
           </span>
           <div>
             <strong className="font-semibold text-fg">
-              {justSent} invitation{justSent === 1 ? "" : "s"} sent.
+              {justSent.sent} invitation{justSent.sent === 1 ? "" : "s"} sent.
             </strong>{" "}
-            Recipients will land on a pre-filled share form. (Email dispatch is
-            stubbed until Resend lands — each send is logged server-side.)
+            Recipients will land on a pre-filled share form.
+            {justSent.failed > 0 && (
+              <>
+                {" "}
+                <strong className="font-semibold text-red">
+                  {justSent.failed} failed to dispatch
+                </strong>{" "}
+                — failed recipients stay re-invitable: re-upload the same CSV to
+                retry just them.
+              </>
+            )}
+            {!emailLive &&
+              " (Email dispatch is currently stubbed — no RESEND_API_KEY set; sends are logged server-side.)"}
           </div>
           <button
             type="button"

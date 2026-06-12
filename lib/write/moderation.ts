@@ -9,16 +9,48 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import type { DbUser } from "@/lib/auth";
+import { dispatchStatus } from "@/lib/email";
+import { statusEmailContent, type StatusKind } from "@/lib/email/templates";
 import { WriteError } from "@/lib/write/experiences";
 
 type Batchable = Parameters<typeof db.batch>[0][number];
-type ExpRow = typeof s.experiences.$inferSelect;
+type ExpRow = typeof s.experiences.$inferSelect & {
+  authorEmail: string;
+  authorName: string;
+  companyName: string;
+};
 
 async function loadExp(expId: string): Promise<ExpRow> {
-  const [exp] = await db.select().from(s.experiences).where(eq(s.experiences.id, expId));
-  if (!exp) throw new WriteError("Post not found");
-  return exp;
+  // Author + company ride along: every transition emails the author about
+  // their "<company> post" (Flow D), so the facts come from one read.
+  const [row] = await db
+    .select({
+      exp: s.experiences,
+      authorEmail: s.users.sstEmail,
+      authorName: s.users.name,
+      companyName: s.companies.name,
+    })
+    .from(s.experiences)
+    .innerJoin(s.users, eq(s.users.id, s.experiences.authorId))
+    .innerJoin(s.companies, eq(s.companies.id, s.experiences.companyId))
+    .where(eq(s.experiences.id, expId));
+  if (!row) throw new WriteError("Post not found");
+  return { ...row.exp, authorEmail: row.authorEmail, authorName: row.authorName, companyName: row.companyName };
 }
+
+// Review-status email (PRD §7 Flow D) — AFTER the batch commits, best-effort:
+// the notifications row is the durable record, the email is the nudge.
+const emailAuthor = (exp: ExpRow, kind: StatusKind, note?: string) =>
+  dispatchStatus({
+    to: exp.authorEmail,
+    ...statusEmailContent(kind, {
+      authorName: exp.authorName,
+      company: exp.companyName,
+      role: exp.roleTitle,
+      expId: exp.id,
+      note,
+    }),
+  });
 
 // Reviewable = actually sitting in the queue. Guards against double-clicks
 // and acting on a post the author just withdrew or deleted.
@@ -57,6 +89,7 @@ export async function approveCore(actor: DbUser, expId: string): Promise<void> {
       .where(eq(s.experiences.id, expId)),
     notify(exp, "post_live"),
   ]);
+  await emailAuthor(exp, "live");
 }
 
 export async function suggestEditsCore(actor: DbUser, expId: string, note: string): Promise<void> {
@@ -75,6 +108,7 @@ export async function suggestEditsCore(actor: DbUser, expId: string, note: strin
       .where(eq(s.experiences.id, expId)),
     notify(exp, "post_needs_edits", { note: note.trim() }),
   ]);
+  await emailAuthor(exp, "needs_edits", note.trim());
 }
 
 export async function rejectCore(actor: DbUser, expId: string, reason: string): Promise<void> {
@@ -93,9 +127,12 @@ export async function rejectCore(actor: DbUser, expId: string, reason: string): 
       .where(eq(s.experiences.id, expId)),
     notify(exp, "post_rejected", { reason: reason.trim() }),
   ]);
+  await emailAuthor(exp, "rejected", reason.trim());
 }
 
 // ── Hide / Unhide a LIVE post (PRD §10) ──────────────────────────────────────
+// No email on hide/unhide — PRD §12 scopes review-status emails to the four
+// review transitions; the in-app notification row still records it.
 export async function hideCore(actor: DbUser, expId: string, reason: string): Promise<void> {
   if (!reason.trim()) throw new WriteError("A hide reason is required — no silent hides");
   const exp = await loadExp(expId);

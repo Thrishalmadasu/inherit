@@ -547,10 +547,13 @@ export async function getInviteDedupe(): Promise<{
       .from(s.users)
       .innerJoin(s.experiences, eq(s.experiences.authorId, s.users.id))
       .where(and(isNull(s.experiences.deletedAt), isNull(s.experiences.withdrawnAt))),
+    // "sent" = emailed; "ready" = dispatch in flight (or crashed mid-send —
+    // treated as possibly-emailed, so it still blocks). "failed" rows are
+    // deliberately ABSENT: no email went out, the next CSV may retry them.
     db
       .selectDistinct({ email: s.inviteRecipients.email })
       .from(s.inviteRecipients)
-      .where(eq(s.inviteRecipients.status, "sent")),
+      .where(inArray(s.inviteRecipients.status, ["sent", "ready"])),
   ]);
   return {
     alreadyShared: authors.map((r) => r.email.toLowerCase()),

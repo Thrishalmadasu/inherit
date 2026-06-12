@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-12** after Session 4 (invite-to-share outreach).
+> Living document. Last updated **2026-06-12** after Session 5 (Resend email + L&D Sheets sync, both behind interfaces).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -31,14 +31,18 @@ next person interviewing at a company walks in with the batch's collective intel
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
-| Invite-to-share (CSV outreach) | ✅ **Live** (send-only V1) | PRD §7 Flow F; email dispatch behind the `EmailSender` console stub |
-| Email (Resend) + L&D Sheets sync | ⏳ Not started | `EmailSender` interface exists (`lib/email.ts`, console stub); Resend swap + Sheets are next |
+| Invite-to-share (CSV outreach) | ✅ **Live** (send-only V1) | PRD §7 Flow F; per-recipient sent/failed statuses from real dispatch results |
+| Email (Resend) | ✅ **Code live** (Session 5) | `lib/email/` seam: review-status emails (Flow D) + invite batch dispatch; **runs as console stub until `RESEND_API_KEY` + DNS land** (§9) |
+| L&D Sheets sync | ✅ **Code live** (Session 5) | `lib/sheets/` seam: Technical+Behavioral rows appended async on first publish; **console stub until service-account key + sheet id land** (§9) |
 
 **The one-sentence status:** *the full loop is real — a student submits, Ops moderates
 (FIFO), the post publishes, every author/moderator state (needs-edits, reject,
 hide, delete, withdraw, edit→re-review) round-trips through Postgres, reader
-engagement (Helpful votes, saves, views) persists with it, and Ops can batch-invite
-interviewees from a CSV (deduped, audited; the email itself is stubbed until Resend).*
+engagement (Helpful votes, saves, views) persists with it, Ops can batch-invite
+interviewees from a CSV (deduped, audited, per-recipient dispatch statuses), every
+review transition emails the author, and publishing appends Technical+Behavioral
+rows to the L&D sheet — with both integrations running as console stubs until the
+Resend key/DNS and the Google service account are provisioned (§9).*
 
 ---
 
@@ -107,7 +111,14 @@ web/
 │  ├─ validations/experience.ts  # Zod schema for the share payload (mirrors draft)
 │  ├─ invite.ts               # invite domain: CSV parser, header aliases, dedupe
 │  │                          #   bucketing, merge tags — pure; runs client AND server
-│  ├─ email.ts                # ★ EmailSender seam (console stub until Resend lands)
+│  ├─ email/                  # ★ EmailSender seam (Session 5): index = interface +
+│  │                          #   console stub + driver pick (CLIENT-SAFE — invite
+│  │                          #   preview imports the From constants); resend.ts =
+│  │                          #   REST driver (no SDK dep); templates.ts = Flow D bodies
+│  ├─ sheets/                 # ★ SheetSync seam (Session 5): index = interface + stub
+│  │                          #   + loader + syncPublishedExperience (retries, never
+│  │                          #   throws); rows.ts = PURE §13 row mapping; google.ts =
+│  │                          #   service-account JWT + values.append (zero deps)
 │  ├─ write/                  # ★ write cores: experiences (submit/resubmit),
 │  │                          #   moderation, my-posts, engagement (helpful/save/
 │  │                          #   view), invites (campaign send), run (action wrapper).
@@ -116,7 +127,8 @@ web/
 │  ├─ draft.ts                # localStorage draft persistence
 │  ├─ cn.ts, toast.ts
 ├─ db/seed.ts                 # wipe + seed (npx tsx db/seed.ts)
-├─ db/verify-write-loop.ts    # ★ 64-assertion invariant test: write loop + engagement + invites
+├─ db/verify-write-loop.ts    # ★ 81-assertion invariant test: write loop + engagement
+│                             #   + invites + status emails + sheet rows
 ├─ drizzle.config.ts
 └─ docs/HANDBOOK.md           # this file
 ```
@@ -199,7 +211,8 @@ flags                                    (reserved, no UI in V1)
 `post_hidden`; Session 3 added — and same-day dropped — `viewed_experiences`, this way;
 Session 4 added `invite_skip_reason.already_invited` via an explicit one-statement
 `ALTER TYPE … ADD VALUE` instead of a blind push — prefer that for additive enum
-changes). The planned switch to generated migrations did NOT happen
+changes; Session 5 added `experiences.sheet_synced_at` the same explicit-ALTER way).
+The planned switch to generated migrations did NOT happen
 with the write loop — it moved to the hardening item (§10 #6) and must land before
 real user data exists. Until then push remains the only mechanism; be careful.
 
@@ -317,8 +330,9 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 | My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
 | Ops users tab | hardcoded list | role change = toast only (later session) |
-| Ops invite tab | **Neon** (dedupe sets + campaign/recipient rows) | Send = real (`sendInvites`); email dispatch = console stub (`lib/email.ts`) until Resend |
-| Notifications | **rows written** on every transition | no UI yet (no bell, no email — email is roadmap #5) |
+| Ops invite tab | **Neon** (dedupe sets + campaign/recipient rows) | Send = real (`sendInvites`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
+| Notifications | **rows written** on every transition | no bell UI yet; **emails real** for the four review transitions (under review / live / needs edits / rejected) via `lib/email`, best-effort after the batch commits |
+| L&D sheet | `sheet_synced_at` stamp on experiences | append fired by `after()` in the approve action → `lib/sheets.syncPublishedExperience` (async, 3 attempts, never blocks/fails publish); Google driver when SA key + sheet id set, stub otherwise |
 
 The write path end-to-end: form (client) → `app/actions/experiences.submitExperience`
 → Zod parse → `lib/write/experiences` core → one `db.batch()` → `revalidatePath` →
@@ -337,7 +351,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 64-assertion write-loop + engagement + invite invariant test (real DB!) —
+                     # 81-assertion write-loop + engagement + invite + email/sheets invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -350,6 +364,11 @@ npx vercel deploy --prod --yes   # deploy
   | `CLERK_SECRET_KEY` | Clerk backend key (`sk_test_…` for now) |
   | `OPS_EMAILS` | comma-separated `/ops` allowlist (interim, until DB roles) |
   | `DEV_AUTH_BYPASS` | `1` enables dev impersonation (§7) — **`.env.local` ONLY, never Vercel** |
+  | `RESEND_API_KEY` | flips `lib/email` from console stub → Resend (real sends!). Needs the From domain verified in Resend (SPF/DKIM DNS) first |
+  | `NEXT_PUBLIC_EMAIL_FROM` | sender address once Ops locks the subdomain (PRD §15 Q4); defaults to `ops@inherit.sst.scaler.com`. Build-time inlined → redeploy to change |
+  | `GOOGLE_SERVICE_ACCOUNT_KEY` | the service account's JSON key, verbatim. With `LD_SHEET_ID`, flips `lib/sheets` from stub → Google |
+  | `LD_SHEET_ID` | L&D tracker spreadsheet id; share the sheet with the SA's `client_email` (Editor). Optional `LD_SHEET_TECHNICAL_TAB`/`LD_SHEET_BEHAVIORAL_TAB` if tab names differ from `Technical`/`Behavioral` |
+  | `EMAIL_DRIVER` / `SHEETS_DRIVER` | force `console`\|`resend` / `console`\|`google` — the invariant test pins both to `console` so it can never email students or write the real sheet |
 
   Still on Clerk **dev-instance** keys — before real launch, create the Clerk
   production instance and swap both keys.
@@ -393,13 +412,25 @@ npx vercel deploy --prod --yes   # deploy
    against fresh dedupe sets — client buckets are never trusted. Invite links land
    on `/share?company=&role=&round=` pre-filled (an in-progress draft still wins).
    Email dispatch is the `lib/email.ts` console stub; 6 new assertions in
-   `db/verify-write-loop.ts` (64 total, incl. the same-CSV-next-day refusal).
-5. **Email (Resend)** behind the `EmailSender` interface (console stub shipped in
-   Session 4 — swap `getEmailSender()`), then
-   **L&D Sheets sync** (service account, append-on-publish, background, never blocks).
+   `db/verify-write-loop.ts` (incl. the same-CSV-next-day refusal).
+5. ~~**Email (Resend) + L&D Sheets sync**~~ ✅ **Code done (Session 5)** — both behind
+   interfaces with env-picked drivers (`lib/email/`, `lib/sheets/`; details below).
+   Review-status emails fire from the write cores after the batch commits
+   (best-effort — the notifications row is the durable record); invite dispatch
+   goes through Resend's batch endpoint in ≤100-email chunks with 429/5xx retries
+   and stamps `invite_recipients` sent/**failed** per row (failed = re-invitable);
+   the sheet append runs via `after()` post-response with 3 attempts and the
+   `sheet_synced_at` stamp making it append-on-FIRST-publish only (PRD §13 —
+   re-approved edits do NOT re-append; reconciliation is deferred two-way sync).
+   **Still needed to go live (user setup, §9):** Resend account + API key + DNS
+   records for the sending subdomain (decide with Ops, PRD §15 Q4), and a Google
+   Cloud service account + the L&D sheet shared with it (+ both tabs created with
+   the header rows from `lib/sheets/rows.ts`). Until then both run as console stubs.
 6. **Hardening before '27 launch**: switch to migration files, invariant tests
    (visibility, FIFO, one-vote), GitHub-connected deploys, rate limits on actions,
-   transfer accounts to an SST org.
+   transfer accounts to an SST org, and a durable retry queue for failed sheet
+   appends (today a final failure just logs and leaves `sheet_synced_at` NULL —
+   PRD §13's "background worker with retries" is approximated by `after()`+3 tries).
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.
@@ -450,3 +481,20 @@ npx vercel deploy --prod --yes   # deploy
   edit mode). Recipients who were "sent" by the stub are dedupe-blocked from future
   campaigns even though no real email went out — fine before launch (reseed clears
   `invite_*`), but remember it when testing campaigns on prod data.
+- Invite dedupe counts `status IN ('sent','ready')`: a crash mid-dispatch leaves rows
+  stuck on "ready", which blocks re-inviting them (treated as possibly-emailed — the
+  safe direction). "failed" rows are deliberately excluded: no email went out, so
+  re-uploading the same CSV retries exactly those recipients.
+- `NEXT_PUBLIC_EMAIL_FROM` is inlined at build time (it's NEXT_PUBLIC so the Ops
+  compose preview shows the real sender) — changing the From address requires a
+  redeploy, not just an env edit.
+- Hide/unhide send NO email by design (PRD §12 scopes review-status emails to the
+  four review transitions); the in-app notification row is still written. Unhide
+  re-fires `post_live` as a row only.
+- The L&D sheet column order/casing in `lib/sheets/rows.ts` is provisional until
+  L&D confirms their tracker shape (PRD §15 Q6) — adjust `*_HEADERS` + `*Cells`
+  there, nothing else. The sync appends data rows only; create the two tabs with
+  header rows by hand when setting up the sheet.
+- The sheet append is fired from the approve ACTION (`after()` needs request
+  scope), not the core — approving via a script/test must call
+  `syncPublishedExperience(expId)` itself if it wants the append.

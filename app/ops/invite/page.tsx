@@ -6,5 +6,13 @@ import { InviteView } from "@/components/ops/invite-view";
 // the client can bucket as it parses; the Send action re-derives them.
 export default async function OpsInvitePage() {
   const { alreadyShared, alreadyInvited } = await getInviteDedupe();
-  return <InviteView alreadyShared={alreadyShared} alreadyInvited={alreadyInvited} />;
+  return (
+    <InviteView
+      alreadyShared={alreadyShared}
+      alreadyInvited={alreadyInvited}
+      // Whether real emails go out, or the console stub logs them (lib/email
+      // driver selection) — the success banner tells Ops the truth either way.
+      emailLive={Boolean(process.env.RESEND_API_KEY)}
+    />
+  );
 }

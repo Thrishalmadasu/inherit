@@ -130,6 +130,9 @@ export const experiences = pgTable("experiences", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
+  // L&D sheet sync stamp (PRD §13) — set once when the rows reach the sheet.
+  // NULL = not synced yet; append-on-FIRST-publish keys off this.
+  sheetSyncedAt: timestamp("sheet_synced_at", { withTimezone: true }),
 });
 
 export const rounds = pgTable("rounds", {

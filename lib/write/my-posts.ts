@@ -5,6 +5,8 @@
 import { eq } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import type { DbUser } from "@/lib/auth";
+import { dispatchStatus } from "@/lib/email";
+import { statusEmailContent } from "@/lib/email/templates";
 import { WriteError } from "@/lib/write/experiences";
 
 async function loadOwn(actor: DbUser, expId: string) {
@@ -59,4 +61,18 @@ export async function resubmitWithdrawnCore(actor: DbUser, expId: string): Promi
       experienceId: expId,
     }),
   ]);
+  // Same "it's in the queue" email as any other (re)submission (Flow D).
+  const [company] = await db
+    .select({ name: s.companies.name })
+    .from(s.companies)
+    .where(eq(s.companies.id, exp.companyId));
+  await dispatchStatus({
+    to: actor.sstEmail,
+    ...statusEmailContent("under_review", {
+      authorName: actor.name,
+      company: company?.name ?? "your",
+      role: exp.roleTitle,
+      expId,
+    }),
+  });
 }

@@ -10,6 +10,8 @@ import { nanoid } from "nanoid";
 import { db, schema as s } from "@/lib/db";
 import type { DbUser } from "@/lib/auth";
 import type { ShareDraftForm } from "@/lib/draft";
+import { dispatchStatus } from "@/lib/email";
+import { statusEmailContent } from "@/lib/email/templates";
 import {
   firstIssue,
   sanitizeShareForm,
@@ -126,6 +128,19 @@ const queueNotification = (userId: string, expId: string, payload: SharePayload)
     payload: { company: payload.company, role: payload.role },
   });
 
+// "It's in the queue" confirmation email (Flow D) — after the batch commits,
+// best-effort (dispatchStatus never throws). The actor IS the author here.
+const emailQueued = (actor: DbUser, expId: string, payload: SharePayload) =>
+  dispatchStatus({
+    to: actor.sstEmail,
+    ...statusEmailContent("under_review", {
+      authorName: actor.name,
+      company: payload.company,
+      role: payload.role,
+      expId,
+    }),
+  });
+
 // ── Flow B: new submission ───────────────────────────────────────────────────
 export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): Promise<string> {
   const parsed = sharePayloadSchema.safeParse(sanitizeShareForm(raw));
@@ -154,6 +169,7 @@ export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): 
     queueNotification(actor.id, expId, payload),
   ];
   await db.batch(stmts as [Batchable, ...Batchable[]]);
+  await emailQueued(actor, expId, payload);
   return expId;
 }
 
@@ -212,5 +228,6 @@ export async function resubmitExperienceCore(
     queueNotification(actor.id, expId, payload),
   ];
   await db.batch(stmts as [Batchable, ...Batchable[]]);
+  await emailQueued(actor, expId, payload);
   return expId;
 }

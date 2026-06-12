@@ -36,7 +36,35 @@ import {
   withdrawMyPostCore,
 } from "../lib/write/my-posts";
 import { sendInvitesCore } from "../lib/write/invites";
+import { setEmailSenderForTest, type EmailSender } from "../lib/email";
+import {
+  loadSheetExperience,
+  setSheetSyncForTest,
+  syncPublishedExperience,
+  type SheetRows,
+} from "../lib/sheets";
+import { buildSheetRows } from "../lib/sheets/rows";
 import type { ShareDraftForm } from "../lib/draft";
+
+// Belt + braces: even if .env.local grows real keys, this script must never
+// email a student or write the L&D sheet. (The capturing sender below already
+// overrides the seam; these pin the drivers for anything that escapes it.)
+process.env.EMAIL_DRIVER = "console";
+process.env.SHEETS_DRIVER = "console";
+
+// Capturing sender: records every dispatch so transitions can assert who got
+// mailed; invites report ok so rows stamp "sent" like a healthy prod send.
+const sentEmails: { kind: "status" | "invite"; to: string; subject: string }[] = [];
+const captureSender: EmailSender = {
+  async sendStatus(e) {
+    sentEmails.push({ kind: "status", to: e.to, subject: e.subject });
+  },
+  async sendInvites(emails) {
+    emails.forEach((e) => sentEmails.push({ kind: "invite", to: e.to, subject: e.subject }));
+    return emails.map((e) => ({ to: e.to, ok: true }));
+  },
+};
+setEmailSenderForTest(captureSender);
 
 let passed = 0;
 function ok(cond: unknown, label: string) {
@@ -350,6 +378,15 @@ async function main() {
       recRows.find((r) => r.email === "not-an-email")?.skipReason === "invalid_email",
     "skip reasons stored per recipient",
   );
+  const readyRow = recRows.find((r) => r.email === "invitee.23bcs10999@sst.scaler.com");
+  ok(
+    readyRow?.status === "sent" && !!readyRow.sentAt,
+    "ready row stamped sent (with timestamp) from the dispatch results",
+  );
+  ok(
+    sentEmails.some((e) => e.kind === "invite" && e.to === "invitee.23bcs10999@sst.scaler.com"),
+    "exactly the ready recipient was dispatched an email",
+  );
   ok(
     (await getInviteDedupe()).alreadyInvited.includes("invitee.23bcs10999@sst.scaler.com"),
     "sent recipient joins the dedupe set",
@@ -367,6 +404,145 @@ async function main() {
         "same CSV next day: everyone already invited/shared → send refused",
       ),
   );
+
+  console.log("\n— Flow F: dispatch failure → rows failed, recipient re-invitable —");
+  const failEmail = "failcase.23bcs10001@sst.scaler.com";
+  setEmailSenderForTest({
+    ...captureSender,
+    async sendInvites(emails) {
+      return emails.map((e) => ({ to: e.to, ok: false, error: "verify-script outage" }));
+    },
+  });
+  const failRes = await sendInvitesCore(moderator, {
+    csv: `name,email\nFail Case,${failEmail}`,
+    fileName: null,
+    subject: "s",
+    body: "b",
+  });
+  setEmailSenderForTest(captureSender);
+  ok(failRes.sent === 0 && failRes.failed === 1, "dispatch failure surfaces in the result counts");
+  const [failRow] = await db
+    .select()
+    .from(s.inviteRecipients)
+    .where(eq(s.inviteRecipients.email, failEmail));
+  ok(failRow?.status === "failed" && !failRow.sentAt, "failed dispatch recorded on the row");
+  ok(
+    !(await getInviteDedupe()).alreadyInvited.includes(failEmail),
+    "failed recipient is NOT dedupe-blocked — same CSV retries them",
+  );
+
+  console.log("\n— roadmap #5: review-status emails (Flow D) —");
+  sentEmails.length = 0;
+  const sheetForm = form("Verify Sheets Co", {
+    rounds: [
+      {
+        round: "OA",
+        status: "Passed",
+        detailed: true,
+        platform: "HackerRank",
+        note: "",
+        blocks: [
+          {
+            type: "coding",
+            prompt: "Sheet-test: max subarray after k swaps.",
+            topics: ["Sliding Window", "Arrays & Strings"],
+            difficulty: 3,
+            detail: "",
+          },
+        ],
+      },
+      {
+        round: "Hiring Manager",
+        status: "Awaiting",
+        detailed: true,
+        platform: "",
+        note: "",
+        blocks: [
+          {
+            type: "behavioral",
+            prompt: "Tell me about a conflict you resolved.",
+            topics: ["Conflict Resolution", "Teamwork"],
+            difficulty: null,
+            detail: "Looked for ownership of the resolution.",
+          },
+        ],
+      },
+    ],
+  });
+  const sheetExpId = await submitExperienceCore(student2, sheetForm);
+  ok(
+    sentEmails.some(
+      (e) => e.kind === "status" && e.to === student2.sstEmail && /review queue/.test(e.subject),
+    ),
+    "submit → 'in the review queue' email to the author",
+  );
+  await approveCore(moderator, sheetExpId);
+  ok(
+    sentEmails.some((e) => e.to === student2.sstEmail && /is live/.test(e.subject)),
+    "approve → 'is live' email",
+  );
+  const edits1 = await submitExperienceCore(student1, form("Verify Sheets Co"));
+  await suggestEditsCore(moderator, edits1, "Trim the interviewer anecdote.");
+  ok(
+    sentEmails.some((e) => e.to === student1.sstEmail && /needs a quick edit/.test(e.subject)),
+    "suggest-edits → 'needs a quick edit' email",
+  );
+  await resubmitExperienceCore(student1, edits1, form("Verify Sheets Co"));
+  await rejectCore(moderator, edits1, "Not enough detail to be useful.");
+  ok(
+    sentEmails.some((e) => e.to === student1.sstEmail && /wasn't approved/.test(e.subject)),
+    "reject → 'wasn't approved' email",
+  );
+
+  console.log("\n— roadmap #5: L&D sheet rows (PRD §13) —");
+  const sheetExp = await loadSheetExperience(sheetExpId);
+  const rows = buildSheetRows(sheetExp!, "https://example.test");
+  ok(
+    rows.technical.length === 1 && rows.behavioral.length === 1,
+    "one technical + one behavioral row (only coding/SD/behavioral blocks sync)",
+  );
+  const t = rows.technical[0];
+  ok(
+    t.company === "Verify Sheets Co" &&
+      t.category === "Coding" &&
+      t.round === "OA" &&
+      t.cycle === 2026,
+    "technical row carries company/category/round/cycle",
+  );
+  ok(
+    t.isDsa && t.topics.includes("Sliding Window") && t.tools.includes("HackerRank"),
+    "technical row: DSA split from tags, platform lands in tools",
+  );
+  ok(
+    t.difficulty === 3 && t.link === `https://example.test/experiences/${sheetExpId}`,
+    "technical row: difficulty + absolute link",
+  );
+  const b = rows.behavioral[0];
+  ok(
+    b.round === "Hiring Manager" &&
+      b.competencies.includes("Conflict Resolution") &&
+      /ownership/.test(b.notes),
+    "behavioral row: round/competencies/looked-for notes",
+  );
+
+  const appended: SheetRows[] = [];
+  setSheetSyncForTest({
+    async appendPublished(r) {
+      appended.push(r);
+    },
+  });
+  await syncPublishedExperience(sheetExpId);
+  const [syncedRow] = await db
+    .select()
+    .from(s.experiences)
+    .where(eq(s.experiences.id, sheetExpId));
+  ok(appended.length === 1 && !!syncedRow.sheetSyncedAt, "sync appends once and stamps sheet_synced_at");
+  await syncPublishedExperience(sheetExpId);
+  ok(appended.length === 1, "second sync is a no-op (append-on-FIRST-publish)");
+  await syncPublishedExperience(edits1); // rejected above
+  ok(appended.length === 1, "a non-live (rejected) post never reaches the sheet");
+  setSheetSyncForTest(null);
+
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }
 

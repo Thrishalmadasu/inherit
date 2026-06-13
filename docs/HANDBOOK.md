@@ -437,6 +437,14 @@ npx vercel deploy --prod --yes   # deploy
    transfer accounts to an SST org, and a durable retry queue for failed sheet
    appends (today a final failure just logs and leaves `sheet_synced_at` NULL —
    PRD §13's "background worker with retries" is approximated by `after()`+3 tries).
+   - **At the Neon-account switch (when the DB is rebuilt fresh):** delete the three
+     LEGACY `invite_skip_reason` enum values (`duplicate_in_file` / `already_shared` /
+     `already_invited`) from `lib/db/schema.ts` BEFORE the first `drizzle-kit push`
+     against the new database. Postgres can't drop them from the live enum, but a
+     fresh DB builds the enum from the TS definition — so the migration is the one
+     clean chance to shed them. Nothing writes them and no rows reference them. This
+     is the only known stale artifact in the codebase (left by the 2026-06-13 invite
+     dedupe removal).
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.

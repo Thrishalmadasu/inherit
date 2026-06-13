@@ -71,12 +71,16 @@ export const inviteRecipientStatus = pgEnum("invite_recipient_status", [
 // removed 2026-06-13 (every valid row sends; Ops invites per experience). The
 // three dedupe reasons are LEGACY — kept because Postgres can't drop enum
 // values without a type rebuild, and the TS enum must match the live DB type.
+// ⚠️ TODO at the Neon-account switch: the fresh DB builds this enum from
+// scratch, so DELETE the three "legacy" lines below BEFORE the first
+// `drizzle-kit push` against the new database — that's the clean moment to
+// shed them (nothing writes them; no rows reference them in a fresh DB).
 export const inviteSkipReason = pgEnum("invite_skip_reason", [
-  "duplicate_in_file", // legacy (dedupe removed)
-  "already_shared", // legacy (dedupe removed)
+  "duplicate_in_file", // legacy (dedupe removed) — drop at fresh-DB migration
+  "already_shared", // legacy (dedupe removed) — drop at fresh-DB migration
   "invalid_email",
   "missing_email",
-  "already_invited", // legacy (dedupe removed)
+  "already_invited", // legacy (dedupe removed) — drop at fresh-DB migration
 ]);
 
 // ── Core tables ──────────────────────────────────────────────────────────────

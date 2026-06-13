@@ -1,8 +1,15 @@
 // Invite-to-share domain (PRD §7 Flow F): CSV parsing, header normalisation,
 // and recipient bucketing. UI-free and side-effect-free so the SAME code runs
 // twice — in the client view for instant feedback, and in the write core,
-// which re-parses the raw CSV against fresh DB dedupe sets (never trust the
-// client). Ported from the design prototype's outreach-page.jsx.
+// which re-parses the raw CSV server-side (never trust the client). Ported
+// from the design prototype's outreach-page.jsx.
+//
+// NO dedupe (product decision 2026-06-13): a student interviews at several
+// companies and Ops invites them per experience, so blocking by email was
+// counterproductive. Every row with a valid email sends — including exact
+// duplicates and re-runs of the same file. Ops owns recipient selection.
+// The only rejection left is VALIDITY: a missing/malformed email can't be
+// emailed (that's not dedupe).
 
 // ── CSV parsing (quoted fields, commas inside quotes, escaped quotes) ────────
 export function parseCsv(text: string): string[][] {
@@ -80,15 +87,10 @@ function mapHeaders(headerRow: string[]): Record<string, number> {
   return map;
 }
 
-// ── Bucketing ────────────────────────────────────────────────────────────────
-export type RecipientIssue =
-  | "missing_email"
-  | "invalid_email"
-  | "duplicate_in_file"
-  | "already_shared"
-  | "already_invited";
+// ── Validation: ready vs. error (the only split — no dedupe) ─────────────────
+export type RecipientIssue = "missing_email" | "invalid_email";
 
-export type RecipientStatus = "ready" | "skip" | "error";
+export type RecipientStatus = "ready" | "error";
 
 export interface ParsedRecipient {
   id: string;
@@ -104,23 +106,14 @@ export interface ParsedRecipient {
 export const ISSUE_COPY: Record<RecipientIssue, string> = {
   missing_email: "Missing email",
   invalid_email: "Invalid email",
-  duplicate_in_file: "Duplicate in CSV",
-  already_shared: "Already shared",
-  already_invited: "Already invited",
 };
 
-// Dedupe sets are lowercase emails: students who already have a post on the
-// platform, and students a previous campaign already emailed (PRD Flow F #8 —
-// a student emailed yesterday isn't re-emailed today).
-export interface InviteDedupe {
-  alreadyShared: ReadonlySet<string>;
-  alreadyInvited: ReadonlySet<string>;
-}
-
-export function buildRecipients(rows: string[][], dedupe: InviteDedupe): ParsedRecipient[] {
+// No dedupe: every row with a valid email is "ready". The only "error" is a
+// missing or malformed email (can't be sent). Duplicates and previously
+// invited/shared students all send — that's the point (per-experience invites).
+export function buildRecipients(rows: string[][]): ParsedRecipient[] {
   if (!rows.length) return [];
   const headerMap = mapHeaders(rows[0]);
-  const seen = new Set<string>();
   const out: ParsedRecipient[] = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -133,15 +126,8 @@ export function buildRecipients(rows: string[][], dedupe: InviteDedupe): ParsedR
     const issues: RecipientIssue[] = [];
     if (!email) issues.push("missing_email");
     else if (!EMAIL_RE.test(email)) issues.push("invalid_email");
-    if (!issues.length && seen.has(email)) issues.push("duplicate_in_file");
-    seen.add(email);
-    if (!issues.length && dedupe.alreadyShared.has(email)) issues.push("already_shared");
-    if (!issues.length && dedupe.alreadyInvited.has(email)) issues.push("already_invited");
 
-    let status: RecipientStatus = "ready";
-    if (issues.includes("missing_email") || issues.includes("invalid_email")) status = "error";
-    else if (issues.length) status = "skip";
-
+    const status: RecipientStatus = issues.length ? "error" : "ready";
     out.push({ id: `r-${r}`, name, email, company, role, round, status, issues });
   }
   return out;

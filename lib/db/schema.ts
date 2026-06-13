@@ -67,12 +67,16 @@ export const inviteRecipientStatus = pgEnum("invite_recipient_status", [
   "sent",
   "failed",
 ]);
+// Only invalid_email / missing_email are still written: invite dedupe was
+// removed 2026-06-13 (every valid row sends; Ops invites per experience). The
+// three dedupe reasons are LEGACY — kept because Postgres can't drop enum
+// values without a type rebuild, and the TS enum must match the live DB type.
 export const inviteSkipReason = pgEnum("invite_skip_reason", [
-  "duplicate_in_file",
-  "already_shared",
+  "duplicate_in_file", // legacy (dedupe removed)
+  "already_shared", // legacy (dedupe removed)
   "invalid_email",
   "missing_email",
-  "already_invited", // emailed by a prior campaign (PRD Flow F #8 — daily-batch dedupe)
+  "already_invited", // legacy (dedupe removed)
 ]);
 
 // ── Core tables ──────────────────────────────────────────────────────────────

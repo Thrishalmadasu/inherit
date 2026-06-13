@@ -9,7 +9,6 @@ import { eq } from "drizzle-orm";
 import { db, schema as s } from "../lib/db";
 import {
   getEditPrefill,
-  getInviteDedupe,
   getMyPendingPost,
   getMyPosts,
   getOpsQueue,
@@ -340,9 +339,10 @@ async function main() {
   await setSavedCore(student2, id1, false);
   ok((await getSavedExperiences(student2.id)).length === 0, "unsave removes it");
 
-  console.log("\n— Flow F: invite-to-share (CSV → campaign + recipients, dedupe) —");
+  console.log("\n— Flow F: invite-to-share (CSV → campaign + recipients, NO dedupe) —");
   // Header aliases on purpose (full_name/email_address/employer/position/stage).
-  // student1 has a live post by now → must be skipped as already_shared.
+  // student1 already has a live post AND the same email appears twice — with no
+  // dedupe every valid row still sends (per-experience invites; Ops owns it).
   const inviteCsv = [
     "full_name,email_address,employer,position,stage",
     "Fresh Invitee,invitee.23bcs10999@sst.scaler.com,Stripe,SDE Intern,System Design",
@@ -357,15 +357,15 @@ async function main() {
     body: "Hi {{name}} — {{role}}, {{round}}.",
   });
   ok(
-    sent1.sent === 1 && sent1.skipped === 2 && sent1.errors === 1,
-    "buckets: 1 ready (aliased headers), already-shared + in-file dupe skipped, bad email errored",
+    sent1.sent === 3 && sent1.errors === 1,
+    "no dedupe: already-shared student + in-file duplicate both send; only the bad email errors",
   );
   const [camp] = await db
     .select()
     .from(s.inviteCampaigns)
     .where(eq(s.inviteCampaigns.createdByUserId, moderator.id));
   ok(
-    camp.readyCount === 1 && camp.skippedCount === 2 && camp.errorCount === 1 && !!camp.sentAt,
+    camp.readyCount === 3 && camp.skippedCount === 0 && camp.errorCount === 1 && !!camp.sentAt,
     "campaign row records the counts and templates",
   );
   const recRows = await db
@@ -374,38 +374,33 @@ async function main() {
     .where(eq(s.inviteRecipients.campaignId, camp.id));
   ok(recRows.length === 4, "every CSV row recorded for the audit trail");
   ok(
-    recRows.find((r) => r.email === student1.sstEmail)?.skipReason === "already_shared" &&
+    recRows.find((r) => r.email === student1.sstEmail)?.status === "sent" &&
       recRows.find((r) => r.email === "not-an-email")?.skipReason === "invalid_email",
-    "skip reasons stored per recipient",
+    "already-shared student is now SENT (not skipped); bad email recorded with its reason",
   );
-  const readyRow = recRows.find((r) => r.email === "invitee.23bcs10999@sst.scaler.com");
+  const dupeRows = recRows.filter((r) => r.email === "invitee.23bcs10999@sst.scaler.com");
   ok(
-    readyRow?.status === "sent" && !!readyRow.sentAt,
-    "ready row stamped sent (with timestamp) from the dispatch results",
-  );
-  ok(
-    sentEmails.some((e) => e.kind === "invite" && e.to === "invitee.23bcs10999@sst.scaler.com"),
-    "exactly the ready recipient was dispatched an email",
+    dupeRows.length === 2 && dupeRows.every((r) => r.status === "sent" && !!r.sentAt),
+    "both rows for the duplicated email are sent and stamped (no in-file dedupe)",
   );
   ok(
-    (await getInviteDedupe()).alreadyInvited.includes("invitee.23bcs10999@sst.scaler.com"),
-    "sent recipient joins the dedupe set",
+    sentEmails.filter(
+      (e) => e.kind === "invite" && e.to === "invitee.23bcs10999@sst.scaler.com",
+    ).length === 2,
+    "the duplicate email was dispatched twice",
   );
-  await sendInvitesCore(moderator, {
+  const rerun = await sendInvitesCore(moderator, {
     csv: inviteCsv,
     fileName: "verify.csv",
     subject: "s",
     body: "b",
-  }).then(
-    () => ok(false, "re-running the same campaign must refuse"),
-    (e) =>
-      ok(
-        e instanceof WriteError && /No ready recipients/.test(e.message),
-        "same CSV next day: everyone already invited/shared → send refused",
-      ),
+  });
+  ok(
+    rerun.sent === 3 && rerun.errors === 1,
+    "re-running the SAME CSV sends again — no cross-campaign dedupe (the fix)",
   );
 
-  console.log("\n— Flow F: dispatch failure → rows failed, recipient re-invitable —");
+  console.log("\n— Flow F: dispatch failure → row marked failed, re-sendable —");
   const failEmail = "failcase.23bcs10001@sst.scaler.com";
   setEmailSenderForTest({
     ...captureSender,
@@ -425,10 +420,9 @@ async function main() {
     .select()
     .from(s.inviteRecipients)
     .where(eq(s.inviteRecipients.email, failEmail));
-  ok(failRow?.status === "failed" && !failRow.sentAt, "failed dispatch recorded on the row");
   ok(
-    !(await getInviteDedupe()).alreadyInvited.includes(failEmail),
-    "failed recipient is NOT dedupe-blocked — same CSV retries them",
+    failRow?.status === "failed" && !failRow.sentAt,
+    "failed dispatch recorded on the row (re-send by re-uploading the CSV)",
   );
 
   console.log("\n— roadmap #5: review-status emails (Flow D) —");

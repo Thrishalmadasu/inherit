@@ -39,7 +39,7 @@ next person interviewing at a company walks in with the batch's collective intel
 (FIFO), the post publishes, every author/moderator state (needs-edits, reject,
 hide, delete, withdraw, edit→re-review) round-trips through Postgres, reader
 engagement (Helpful votes, saves, views) persists with it, Ops can batch-invite
-interviewees from a CSV (deduped, audited, per-recipient dispatch statuses), every
+interviewees from a CSV (every valid row sends — no dedupe; audited, per-recipient dispatch statuses), every
 review transition emails the author, and publishing appends Technical+Behavioral
 rows to the L&D sheet — with both integrations running as console stubs until the
 Resend key/DNS and the Google service account are provisioned (§9).*
@@ -109,8 +109,9 @@ web/
 │  ├─ db/queries.ts           # ★ read queries + THE visibility invariant
 │  │                          #   (+ author/Ops reads that deliberately bypass it)
 │  ├─ validations/experience.ts  # Zod schema for the share payload (mirrors draft)
-│  ├─ invite.ts               # invite domain: CSV parser, header aliases, dedupe
-│  │                          #   bucketing, merge tags — pure; runs client AND server
+│  ├─ invite.ts               # invite domain: CSV parser, header aliases, ready/error
+│  │                          #   split (valid-email check only — NO dedupe), merge tags
+│  │                          #   — pure; runs client AND server
 │  ├─ email/                  # ★ EmailSender seam (Session 5): index = interface +
 │  │                          #   console stub + driver pick (CLIENT-SAFE — invite
 │  │                          #   preview imports the From constants); resend.ts =
@@ -164,7 +165,7 @@ users ──< experiences ──< rounds ──< content_blocks >──< topic_t
                 └──< notifications
 companies ──< experiences
 role_change_audit / moderation_actions  (append-only audit)
-invite_campaigns ──< invite_recipients  (outreach + dedupe)
+invite_campaigns ──< invite_recipients  (outreach audit trail — no dedupe)
 flags                                    (reserved, no UI in V1)
 ```
 
@@ -330,7 +331,7 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 | My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
 | Ops users tab | hardcoded list | role change = toast only (later session) |
-| Ops invite tab | **Neon** (dedupe sets + campaign/recipient rows) | Send = real (`sendInvites`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
+| Ops invite tab | **Neon** (campaign + recipient rows = audit trail; **no dedupe** — every valid row sends) | Send = real (`sendInvites`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
 | Notifications | **rows written** on every transition | no bell UI yet; **emails real** for the four review transitions (under review / live / needs edits / rejected) via `lib/email`, best-effort after the batch commits |
 | L&D sheet | `sheet_synced_at` stamp on experiences | append fired by `after()` in the approve action → `lib/sheets.syncPublishedExperience` (async, 3 attempts, never blocks/fails publish); Google driver when SA key + sheet id set, stub otherwise |
 
@@ -401,24 +402,29 @@ npx vercel deploy --prod --yes   # deploy
    (19 new assertions: idempotence, counter↔row consistency, view dedupe,
    saved-list visibility). In-browser pass now unblocked by dev impersonation
    (§7); verified server-rendered flows as student + moderator locally.
-4. ~~**Invite-to-share**~~ ✅ **Done (Session 4)** — send-only V1 of PRD §7 Flow F,
-   ported faithfully from the prototype's `outreach-page.jsx` (no KPI strip / campaigns
-   table — those are deferred Ops Analytics). CSV → header-alias normalisation →
-   Ready/Will-skip/Errors buckets (dedupe vs existing authors AND prior
-   `invite_recipients`, plus in-file dupes / bad emails) → compose with merge tags +
+4. ~~**Invite-to-share**~~ ✅ **Done (Session 4; dedupe removed Session 5)** — send-only
+   V1 of PRD §7 Flow F, ported faithfully from the prototype's `outreach-page.jsx` (no
+   KPI strip / campaigns table — those are deferred Ops Analytics). CSV → header-alias
+   normalisation → Ready/Errors buckets (valid-email check only — **NO dedupe** as of
+   2026-06-13: every valid row sends, including in-file duplicates and re-runs of the
+   same file; Ops invites a student per interview experience) → compose with merge tags +
    live preview → confirm → ONE `db.batch()` writes `invite_campaigns` +
-   all recipient rows (sent/skipped + reason, full audit trail). The client parses
-   for instant feedback but the Send action re-parses the raw CSV server-side
-   against fresh dedupe sets — client buckets are never trusted. Invite links land
+   all recipient rows (ready→sent/failed per dispatch, plus bad-email rows recorded as
+   skipped with invalid_email/missing_email — full audit trail). The client parses
+   for instant feedback but the Send action re-parses + re-validates the raw CSV
+   server-side — the client is never trusted. Invite links land
    on `/share?company=&role=&round=` pre-filled (an in-progress draft still wins).
-   Email dispatch is the `lib/email.ts` console stub; 6 new assertions in
-   `db/verify-write-loop.ts` (incl. the same-CSV-next-day refusal).
+   Email dispatch is the `lib/email` driver; Flow F assertions in
+   `db/verify-write-loop.ts` (incl. that re-running the SAME CSV sends again — no
+   cross-campaign dedupe — and that in-file duplicates each dispatch).
 5. ~~**Email (Resend) + L&D Sheets sync**~~ ✅ **Code done (Session 5)** — both behind
    interfaces with env-picked drivers (`lib/email/`, `lib/sheets/`; details below).
    Review-status emails fire from the write cores after the batch commits
    (best-effort — the notifications row is the durable record); invite dispatch
    goes through Resend's batch endpoint in ≤100-email chunks with 429/5xx retries
-   and stamps `invite_recipients` sent/**failed** per row (failed = re-invitable);
+   and stamps `invite_recipients` sent/**failed** per row BY ROW ID (duplicates are
+   allowed now, so an email no longer identifies one row); failed = re-send by
+   re-uploading the same CSV (no dedupe blocks it);
    the sheet append runs via `after()` post-response with 3 attempts and the
    `sheet_synced_at` stamp making it append-on-FIRST-publish only (PRD §13 —
    re-approved edits do NOT re-append; reconciliation is deferred two-way sync).
@@ -478,13 +484,13 @@ npx vercel deploy --prod --yes   # deploy
   Vercel git deploys is still the recommended next infra step (§9).
 - Invite-link prefill (`/share?company=…`) only applies when there's no saved share
   draft — a student mid-draft keeps their draft (deliberate; same draft-wins rule as
-  edit mode). Recipients who were "sent" by the stub are dedupe-blocked from future
-  campaigns even though no real email went out — fine before launch (reseed clears
-  `invite_*`), but remember it when testing campaigns on prod data.
-- Invite dedupe counts `status IN ('sent','ready')`: a crash mid-dispatch leaves rows
-  stuck on "ready", which blocks re-inviting them (treated as possibly-emailed — the
-  safe direction). "failed" rows are deliberately excluded: no email went out, so
-  re-uploading the same CSV retries exactly those recipients.
+  edit mode).
+- **Invite-to-share has NO dedupe** (2026-06-13): re-uploading the same CSV sends
+  again, and the same email twice in one file dispatches twice. This is intended —
+  Ops invites a student per interview experience and owns recipient selection. The
+  only rejected rows are bad emails (missing/invalid), recorded as `skipped` with
+  reason `invalid_email`/`missing_email`. `failed` rows (dispatch error) re-send on
+  the next upload, same as everything else — nothing blocks a re-send.
 - `NEXT_PUBLIC_EMAIL_FROM` is inlined at build time (it's NEXT_PUBLIC so the Ops
   compose preview shows the real sender) — changing the From address requires a
   redeploy, not just an env edit.

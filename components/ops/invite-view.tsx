@@ -4,11 +4,11 @@
 // prototype's outreach-page.jsx. Send-only V1: no KPI strip, no campaigns
 // table — those ship with Ops Analytics.
 //
-// The dedupe sets arrive as props (server-loaded); parsing/bucketing runs
-// in-browser for instant feedback, and the Send action re-runs the same
-// bucketing server-side against fresh DB state before writing anything.
+// Parsing + email validation run in-browser for instant feedback; the Send
+// action re-parses and re-validates the same raw CSV server-side before
+// writing (the client is never trusted). NO dedupe (2026-06-13): every row
+// with a valid email sends — duplicates and re-runs included.
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -35,16 +35,7 @@ import {
 const CARD = "rounded-lg border border-border bg-surface px-[22px] pb-5 pt-[22px]";
 const MONO = "font-mono";
 
-export function InviteView({
-  alreadyShared,
-  alreadyInvited,
-  emailLive,
-}: {
-  alreadyShared: string[];
-  alreadyInvited: string[];
-  emailLive: boolean;
-}) {
-  const router = useRouter();
+export function InviteView({ emailLive }: { emailLive: boolean }) {
   const viewer = useViewer();
 
   const [rawCsv, setRawCsv] = useState("");
@@ -59,21 +50,13 @@ export function InviteView({
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [focusTarget, setFocusTarget] = useState<"subject" | "body">("body");
 
-  const dedupe = useMemo(
-    () => ({
-      alreadyShared: new Set(alreadyShared),
-      alreadyInvited: new Set(alreadyInvited),
-    }),
-    [alreadyShared, alreadyInvited],
-  );
   const parsed = useMemo(() => (rawCsv ? parseCsv(rawCsv) : []), [rawCsv]);
-  const recipients = useMemo(() => buildRecipients(parsed, dedupe), [parsed, dedupe]);
+  const recipients = useMemo(() => buildRecipients(parsed), [parsed]);
 
   const readyRecipients = recipients.filter((r) => r.status === "ready");
   const sampleRecipient = readyRecipients[0] || recipients[0] || null;
   const counts = {
     ready: readyRecipients.length,
-    skip: recipients.filter((r) => r.status === "skip").length,
     error: recipients.filter((r) => r.status === "error").length,
   };
 
@@ -125,8 +108,6 @@ export function InviteView({
     }
     setJustSent(result.data);
     clearCsv();
-    // refresh the server-loaded dedupe props so the next CSV skips these emails
-    router.refresh();
   };
 
   return (
@@ -171,7 +152,7 @@ export function InviteView({
           <CardHeader
             n={1}
             title="Upload recipients"
-            sub="Drop a CSV of students you'd like to nudge. We'll dedupe against existing posts and previous invites, and skip anyone who's already shared."
+            sub="Drop a CSV of students you'd like to nudge — one row per experience you want them to write up. Every row with a valid email gets an invite (no dedupe; duplicates and re-runs all send)."
           />
           <DropZone
             onCsv={setCsv}
@@ -253,9 +234,6 @@ export function InviteView({
             </span>
             <span>
               ready to send
-              {counts.skip > 0 && (
-                <span className="text-[12.5px] text-fg-3"> · {counts.skip} skipped</span>
-              )}
               {counts.error > 0 && (
                 <span className="text-[12.5px] text-red"> · {counts.error} errors</span>
               )}
@@ -494,12 +472,6 @@ function StatusPill({ status }: { status: RecipientStatus }) {
         <Icon.check className="size-2.5" /> Ready
       </span>
     );
-  if (status === "skip")
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-gray-border bg-gray-soft px-2 py-[3px] text-[11px] font-semibold text-fg-3">
-        Skip
-      </span>
-    );
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-red-border bg-red-soft px-2 py-[3px] text-[11px] font-semibold text-red">
       <Icon.warn className="size-2.5" /> Error
@@ -523,7 +495,6 @@ function RecipientsTable({
     () => ({
       all: recipients.length,
       ready: recipients.filter((r) => r.status === "ready").length,
-      skip: recipients.filter((r) => r.status === "skip").length,
       error: recipients.filter((r) => r.status === "error").length,
     }),
     [recipients],
@@ -542,7 +513,6 @@ function RecipientsTable({
           [
             ["all", "All", counts.all],
             ["ready", "Ready to send", counts.ready],
-            ["skip", "Will skip", counts.skip],
             ["error", "Errors", counts.error],
           ] as const
         ).map(([k, label, n]) => (
@@ -570,7 +540,6 @@ function RecipientsTable({
                 "text-[13px] [&+&]:border-t [&+&]:border-border",
                 r.status === "error" &&
                   "bg-[linear-gradient(90deg,var(--color-red-soft),transparent_60%)]",
-                r.status === "skip" && "opacity-75",
               )}
             >
               <div>

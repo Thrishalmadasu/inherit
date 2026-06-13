@@ -533,30 +533,6 @@ export async function getEditPrefill(
   };
 }
 
-// ── Invite-to-share dedupe sets (PRD §7 Flow F) ──────────────────────────────
-// Lowercased emails the next campaign must skip: students with a post already
-// on the platform (any non-deleted, non-withdrawn submission counts — drafts
-// in review included) and students a previous campaign already emailed.
-export async function getInviteDedupe(): Promise<{
-  alreadyShared: string[];
-  alreadyInvited: string[];
-}> {
-  const [authors, invited] = await Promise.all([
-    db
-      .selectDistinct({ email: s.users.sstEmail })
-      .from(s.users)
-      .innerJoin(s.experiences, eq(s.experiences.authorId, s.users.id))
-      .where(and(isNull(s.experiences.deletedAt), isNull(s.experiences.withdrawnAt))),
-    // "sent" = emailed; "ready" = dispatch in flight (or crashed mid-send —
-    // treated as possibly-emailed, so it still blocks). "failed" rows are
-    // deliberately ABSENT: no email went out, the next CSV may retry them.
-    db
-      .selectDistinct({ email: s.inviteRecipients.email })
-      .from(s.inviteRecipients)
-      .where(inArray(s.inviteRecipients.status, ["sent", "ready"])),
-  ]);
-  return {
-    alreadyShared: authors.map((r) => r.email.toLowerCase()),
-    alreadyInvited: invited.map((r) => r.email.toLowerCase()),
-  };
-}
+// Invite-to-share has NO dedupe (product decision 2026-06-13): Ops invites
+// students per experience, so the campaign send re-parses the CSV and emails
+// every valid row — there is no "already shared / already invited" lookup.

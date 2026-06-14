@@ -68,6 +68,20 @@ export function isSuperAdminEmail(email?: string | null): boolean {
   return envAllowlist(process.env.SUPER_ADMIN_EMAILS, email);
 }
 
+// ALLOWED_EXTERNAL_EMAILS: explicit guests who may use the app despite NOT
+// being @sst.scaler.com (e.g. a placement-cell partner, an external admin).
+// The domain gate stays the default; this is a per-email exception. Add the
+// SAME address to Clerk's allowlist too, or Clerk won't let them authenticate
+// in the first place — this only relaxes our code-level backstop (handbook §7).
+export function isAllowedExternalEmail(email?: string | null): boolean {
+  return envAllowlist(process.env.ALLOWED_EXTERNAL_EMAILS, email);
+}
+
+// Who may use the app: any SST account, OR an explicitly allowlisted guest.
+export function isAllowedEmail(email?: string | null): boolean {
+  return Boolean(email && email.toLowerCase().endsWith(`@${SST_DOMAIN}`)) || isAllowedExternalEmail(email);
+}
+
 export type AuthGate =
   | { status: "signed-out" }
   | { status: "wrong-domain"; email: string }
@@ -102,8 +116,9 @@ export async function ensureDbUser(): Promise<AuthGate> {
   if (!user) return { status: "signed-out" };
 
   const email = (user.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
-  // Backstop to the Clerk dashboard domain allowlist — never trust one layer.
-  if (!email.endsWith(`@${SST_DOMAIN}`)) return { status: "wrong-domain", email };
+  // Backstop to the Clerk dashboard allowlist — never trust one layer. SST
+  // accounts pass; specific external guests pass via ALLOWED_EXTERNAL_EMAILS.
+  if (!isAllowedEmail(email)) return { status: "wrong-domain", email };
 
   const wantsSuper = isSuperAdminEmail(email);
   const name = cleanPersonName(user.fullName) || shortFromEmail(email);
@@ -169,7 +184,7 @@ export async function requireDbUser(): Promise<DbUser> {
 
   const user = await currentUser();
   const email = (user?.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
-  if (!user || !email.endsWith(`@${SST_DOMAIN}`)) throw new Error("Not signed in");
+  if (!user || !isAllowedEmail(email)) throw new Error("Not signed in");
   const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, email));
   if (!row) throw new Error("No account — reload and try again");
   return row;

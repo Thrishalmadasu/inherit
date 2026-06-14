@@ -44,7 +44,7 @@ export async function withdrawMyPostCore(actor: DbUser, expId: string): Promise<
     .where(eq(s.experiences.id, expId));
 }
 
-// Resubmit a withdrawn post unchanged — re-stamps created_at, so it joins the
+// Resubmit a withdrawn post unchanged - re-stamps created_at, so it joins the
 // back of the FIFO queue like any other (re)submission.
 export async function resubmitWithdrawnCore(actor: DbUser, expId: string): Promise<void> {
   const exp = await loadOwn(actor, expId);
@@ -62,7 +62,7 @@ export async function resubmitWithdrawnCore(actor: DbUser, expId: string): Promi
     }),
   ]);
   // Same "it's in the queue" email as any other (re)submission (Flow D). The
-  // company may still be a proposed (not-yet-canonical) name — fall back to it.
+  // company may still be a proposed (not-yet-canonical) name - fall back to it.
   const [company] = exp.companyId
     ? await db.select({ name: s.companies.name }).from(s.companies).where(eq(s.companies.id, exp.companyId))
     : [];

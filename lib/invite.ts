@@ -1,12 +1,12 @@
 // Invite-to-share domain (PRD §7 Flow F): CSV parsing, header normalisation,
 // and recipient bucketing. UI-free and side-effect-free so the SAME code runs
-// twice — in the client view for instant feedback, and in the write core,
+// twice - in the client view for instant feedback, and in the write core,
 // which re-parses the raw CSV server-side (never trust the client). Ported
 // from the design prototype's outreach-page.jsx.
 //
 // NO dedupe (product decision 2026-06-13): a student interviews at several
 // companies and Ops invites them per experience, so blocking by email was
-// counterproductive. Every row with a valid email sends — including exact
+// counterproductive. Every row with a valid email sends - including exact
 // duplicates and re-runs of the same file. Ops owns recipient selection.
 // The only rejection left is VALIDITY: a missing/malformed email can't be
 // emailed (that's not dedupe).
@@ -87,7 +87,7 @@ function mapHeaders(headerRow: string[]): Record<string, number> {
   return map;
 }
 
-// ── Validation: ready vs. error (the only split — no dedupe) ─────────────────
+// ── Validation: ready vs. error (the only split - no dedupe) ─────────────────
 export type RecipientIssue = "missing_email" | "invalid_email";
 
 export type RecipientStatus = "ready" | "error";
@@ -110,7 +110,7 @@ export const ISSUE_COPY: Record<RecipientIssue, string> = {
 
 // The five fields a recipient carries, however they were entered (CSV row or
 // the manual add-recipient form). Shared so CSV and manual rows validate
-// IDENTICALLY — the server re-runs this classifier on both (client untrusted).
+// IDENTICALLY - the server re-runs this classifier on both (client untrusted).
 export interface RecipientFields {
   name: string;
   email: string;
@@ -155,7 +155,7 @@ export function buildRecipients(rows: string[][]): ParsedRecipient[] {
   return out;
 }
 
-// Manually-entered recipients (the add-recipient form) — validated by the SAME
+// Manually-entered recipients (the add-recipient form) - validated by the SAME
 // classifier as CSV rows. `m-` ids distinguish them in the UI (removable).
 export function buildManualRecipients(rows: RecipientFields[]): ParsedRecipient[] {
   return rows.map((f, i) => classifyRecipient(f, `m-${i}`));

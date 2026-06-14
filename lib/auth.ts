@@ -1,4 +1,4 @@
-// Server-side auth helpers — the Clerk ↔ users-table seam (handbook §3).
+// Server-side auth helpers - the Clerk ↔ users-table seam (handbook §3).
 // Clerk owns sessions; our `users` table stays the system of record for
 // authorship/roles so swapping the auth vendor never touches the data model.
 import { clerkClient, currentUser } from "@clerk/nextjs/server";
@@ -14,17 +14,17 @@ export const SST_DOMAIN = "sst.scaler.com";
 // The preview/headless browser can never complete a Clerk dev-instance flow
 // (it requires top-level navigation to *.clerk.accounts.dev). Under `next
 // dev` ONLY, a `dev-impersonate` cookie (set via /dev-login?as=<email>) short-
-// circuits BOTH auth helpers to a seeded users row — Clerk is never consulted.
+// circuits BOTH auth helpers to a seeded users row - Clerk is never consulted.
 // Three gates keep this inert in production: NODE_ENV === "development"
 // (always "production" on Vercel builds), the cookie, and the users row must
 // exist. The cookie is set by a route that itself 404s outside dev.
 export const DEV_IMPERSONATE_COOKIE = "dev-impersonate";
 
-// Defense in depth — ALL must hold, and any single one keeps production safe:
-//  1. DEV_AUTH_BYPASS=1 — explicit opt-in, lives only in gitignored
+// Defense in depth - ALL must hold, and any single one keeps production safe:
+//  1. DEV_AUTH_BYPASS=1 - explicit opt-in, lives only in gitignored
 //     .env.local; never set on Vercel. Default OFF even for `next dev`.
-//  2. NODE_ENV === "development" — always "production" on Vercel builds.
-//  3. !VERCEL — Vercel sets this env var unconditionally, so even a
+//  2. NODE_ENV === "development" - always "production" on Vercel builds.
+//  3. !VERCEL - Vercel sets this env var unconditionally, so even a
 //     misconfigured NODE_ENV cannot wake the bypass up there.
 // (Then the cookie must be present AND resolve to an existing users row.)
 export function isDevBypassEnabled(): boolean {
@@ -41,7 +41,7 @@ async function devImpersonationEmail(): Promise<string | null> {
   return jar.get(DEV_IMPERSONATE_COOKIE)?.value ?? null;
 }
 
-// Env allowlist helper — comma-separated, case-insensitive.
+// Env allowlist helper - comma-separated, case-insensitive.
 function envAllowlist(raw: string | undefined, email: string | null | undefined): boolean {
   if (!email) return false;
   return (raw ?? "")
@@ -59,7 +59,7 @@ export function isOpsEmail(email?: string | null): boolean {
 }
 
 // SUPER_ADMIN_EMAILS: bootstrap allowlist for the SUPER-ADMIN power (granting
-// roles). Solves the chicken-and-egg on a fresh DB — before anyone holds the
+// roles). Solves the chicken-and-egg on a fresh DB - before anyone holds the
 // super_admin role there'd be no one able to assign it. Keep this to the one
 // or two people who own role management; once they're super_admin in the DB it
 // is redundant but harmless. Distinct from OPS_EMAILS on purpose: a student who
@@ -72,7 +72,7 @@ export function isSuperAdminEmail(email?: string | null): boolean {
 // being @sst.scaler.com (e.g. a placement-cell partner, an external admin).
 // The domain gate stays the default; this is a per-email exception. Add the
 // SAME address to Clerk's allowlist too, or Clerk won't let them authenticate
-// in the first place — this only relaxes our code-level backstop (handbook §7).
+// in the first place - this only relaxes our code-level backstop (handbook §7).
 export function isAllowedExternalEmail(email?: string | null): boolean {
   return envAllowlist(process.env.ALLOWED_EXTERNAL_EMAILS, email);
 }
@@ -97,7 +97,7 @@ export type AuthGate =
 //
 // Self-healing super-admin (Option A): an email in SUPER_ADMIN_EMAILS is
 // promoted to super_admin IN THE DB here, so the users table + role_change_audit
-// stay the single source of truth — the env var is just the seed that breaks the
+// stay the single source of truth - the env var is just the seed that breaks the
 // fresh-DB chicken-and-egg, and can be removed once the role is set.
 export async function ensureDbUser(): Promise<AuthGate> {
   const devEmail = await devImpersonationEmail();
@@ -116,19 +116,19 @@ export async function ensureDbUser(): Promise<AuthGate> {
   if (!user) return { status: "signed-out" };
 
   const email = (user.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
-  // Backstop to the Clerk dashboard allowlist — never trust one layer. SST
+  // Backstop to the Clerk dashboard allowlist - never trust one layer. SST
   // accounts pass; specific external guests pass via ALLOWED_EXTERNAL_EMAILS.
   if (!isAllowedEmail(email)) return { status: "wrong-domain", email };
 
   const wantsSuper = isSuperAdminEmail(email);
   const name = cleanPersonName(user.fullName) || shortFromEmail(email);
 
-  // Resolve our row (system of record) every request — one cheap indexed
-  // lookup — so viewer.isOps can reflect the DB ROLE: a moderator promoted
+  // Resolve our row (system of record) every request - one cheap indexed
+  // lookup - so viewer.isOps can reflect the DB ROLE: a moderator promoted
   // purely via /ops/users gets the Ops nav link without being in OPS_EMAILS.
   // The expensive op (the Clerk metadata write) is still skipped once dbUserId
   // is stamped. Name is written ONCE on first insert (Google names are
-  // unreliable — "THRISHAL ."); existing/seeded/Ops-curated rows keep theirs.
+  // unreliable - "THRISHAL ."); existing/seeded/Ops-curated rows keep theirs.
   let [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, email));
   if (!row) {
     const [inserted] = await db
@@ -178,7 +178,7 @@ export async function requireDbUser(): Promise<DbUser> {
   if (devEmail) {
     const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, devEmail));
     if (!row)
-      throw new Error(`Dev impersonation: no users row for ${devEmail} — reseed or /dev-login?off`);
+      throw new Error(`Dev impersonation: no users row for ${devEmail} - reseed or /dev-login?off`);
     return row;
   }
 
@@ -186,7 +186,7 @@ export async function requireDbUser(): Promise<DbUser> {
   const email = (user?.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
   if (!user || !isAllowedEmail(email)) throw new Error("Not signed in");
   const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, email));
-  if (!row) throw new Error("No account — reload and try again");
+  if (!row) throw new Error("No account - reload and try again");
   return row;
 }
 
@@ -195,7 +195,7 @@ export function isOpsUser(u: DbUser): boolean {
 }
 
 // Moderator = the role allowed to take DESTRUCTIVE moderation actions (hide /
-// unhide). Deliberately role-only — it does NOT honor the OPS_EMAILS bootstrap,
+// unhide). Deliberately role-only - it does NOT honor the OPS_EMAILS bootstrap,
 // so a student who's in OPS_EMAILS to help triage the queue can't hide a live
 // post by mistake (concern #4). super_admin counts as a moderator.
 export function isModerator(u: DbUser): boolean {

@@ -2,7 +2,7 @@
 
 // Client half of My Posts: tab filtering, the localStorage draft row, the
 // author actions (restore / delete / resubmit), and the Saved tab (bookmarked
-// posts by others). Everything arrives as props from the server page — never
+// posts by others). Everything arrives as props from the server page - never
 // queried here.
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -65,7 +65,7 @@ export function MyPostsView({
     return draftTouched(d) ? d : null;
   });
 
-  // Saved is the only growing list here (My Posts is one author's own rows —
+  // Saved is the only growing list here (My Posts is one author's own rows -
   // naturally bounded). Page 1 from props; "Load more" accumulates the rest.
   const [savedExtra, setSavedExtra] = useState<Experience[]>([]);
   const [savedNextPage, setSavedNextPage] = useState(2);
@@ -80,14 +80,14 @@ export function MyPostsView({
       setSavedHasMore(res.hasMore);
       setSavedNextPage((n) => n + 1);
     } catch {
-      toast("Couldn't load more — please try again");
+      toast("Couldn't load more - please try again");
     } finally {
       setSavedLoading(false);
     }
   };
 
   const counts = useMemo(() => {
-    // "all" counts MY posts only — Saved is other people's posts, kept apart.
+    // "all" counts MY posts only - Saved is other people's posts, kept apart.
     const c: Record<string, number> = {
       all: posts.length,
       Draft: draft ? 1 : 0,
@@ -240,7 +240,7 @@ function MyPostRow({ post }: { post: MyPost }) {
   const onDelete = () => {
     if (!confirm("Delete this post? It disappears from the platform but you can restore it from the Deleted tab any time."))
       return;
-    void run(() => deleteMyPost(post.id), "Post deleted — restore it any time")();
+    void run(() => deleteMyPost(post.id), "Post deleted - restore it any time")();
   };
 
   return (
@@ -366,7 +366,7 @@ function MyPostRow({ post }: { post: MyPost }) {
               <SmallButton
                 onClick={run(
                   () => resubmitWithdrawn(post.id),
-                  "Resubmitted — back of the review queue",
+                  "Resubmitted - back of the review queue",
                 )}
                 disabled={busy}
                 variant="primary"

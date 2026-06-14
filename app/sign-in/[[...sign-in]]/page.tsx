@@ -3,7 +3,7 @@ import { SignIn } from "@clerk/nextjs";
 import { Icon } from "@/components/icons";
 import { BrandMark } from "@/components/brand";
 
-export const metadata: Metadata = { title: "Sign in — SST Inherit" };
+export const metadata: Metadata = { title: "Sign in - SST Inherit" };
 
 export default function SignInPage() {
   return (
@@ -12,7 +12,7 @@ export default function SignInPage() {
         <BrandMark className="mb-4 size-14" priority />
         <h1 className="mb-1.5 text-[26px] font-bold tracking-[-0.02em]">SST Inherit</h1>
         <p className="max-w-[380px] text-sm leading-[1.6] text-fg-2">
-          Every OA, interview, and offer your batchmates have been through —
+          Every OA, interview, and offer your batchmates have been through -
           searchable in one place.
         </p>
       </header>
@@ -21,7 +21,7 @@ export default function SignInPage() {
 
       <p className="flex items-center gap-1.5 text-[12.5px] text-fg-3">
         <Icon.shield className="size-3.5" />
-        SST-only — sign in with your @sst.scaler.com Google account.
+        SST-only - sign in with your @sst.scaler.com Google account.
       </p>
     </main>
   );

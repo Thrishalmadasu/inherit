@@ -1,9 +1,9 @@
 // Zod schema for the share-form submission payload (Server Action input).
-// Mirrors the localStorage draft types in lib/draft.ts 1:1 — the client sends
+// Mirrors the localStorage draft types in lib/draft.ts 1:1 - the client sends
 // its ShareDraftForm verbatim; we sanitize (trim, drop empty tips/blocks) and
 // then validate. Canonical-vocabulary membership (topic tags, round types) is
 // NOT checked here: it lives in the write cores, which re-resolve every label
-// against the ACTIVE DB rows (topic_tags / round_types) — the single source of
+// against the ACTIVE DB rows (topic_tags / round_types) - the single source of
 // truth, so Ops-added entries work the instant they exist. Zod only guards
 // shape and length. Company likewise can be a not-yet-canonical (proposed)
 // name; the moderator resolves it during review.

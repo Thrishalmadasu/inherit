@@ -1,5 +1,5 @@
 // Write cores for the Ops-managed canonical vocabularies (concern #10):
-// companies, round types, and topic tags. Same contract as the other cores —
+// companies, round types, and topic tags. Same contract as the other cores -
 // explicit actor (re-asserts authorization), no "use server", one db.batch()
 // per multi-statement mutation. These are the ONLY way new canonical entries
 // are created (students never introduce them), so duplicates are prevented at
@@ -83,7 +83,7 @@ export async function renameCompanyCore(
   const [target] = await db.select().from(s.companies).where(eq(s.companies.id, id));
   if (!target) throw new WriteError("Company not found");
   if (await findCompanyByNameOrAlias(name, id))
-    throw new WriteError(`“${name}” collides with another company — merge instead`);
+    throw new WriteError(`“${name}” collides with another company - merge instead`);
   // Slug stays stable (it's the URL); only the display name + facets change.
   await db
     .update(s.companies)
@@ -108,7 +108,7 @@ export async function addCompanyAliasCore(
   const taken = await findCompanyByNameOrAlias(a, id);
   if (taken) throw new WriteError(`“${a}” already belongs to ${taken.name}`);
   const known = new Set([target.name.toLowerCase(), ...target.aliases.map((x) => x.toLowerCase())]);
-  if (known.has(a.toLowerCase())) return; // already an alias/name — no-op
+  if (known.has(a.toLowerCase())) return; // already an alias/name - no-op
   await db
     .update(s.companies)
     .set({ aliases: sql`array_append(${s.companies.aliases}, ${a})` })
@@ -117,7 +117,7 @@ export async function addCompanyAliasCore(
 
 // Merge: fold `sourceId` into `targetId`. Repoint every experience, absorb the
 // source's name + aliases into the target's aliases (so the spellings keep
-// resolving), then delete the source row. One batch — the dedup is atomic.
+// resolving), then delete the source row. One batch - the dedup is atomic.
 export async function mergeCompaniesCore(
   actor: DbUser,
   sourceId: string,
@@ -175,7 +175,7 @@ export async function addRoundTypeCore(actor: DbUser, label: string): Promise<{ 
 }
 
 // Rename propagates to the denormalized rounds.name (all stored names are
-// canonical labels, so they match by the old label) — keeps every experience
+// canonical labels, so they match by the old label) - keeps every experience
 // consistent without a join.
 export async function renameRoundTypeCore(
   actor: DbUser,

@@ -1,4 +1,4 @@
-// Shared share-form draft persistence (localStorage) — used by the share form
+// Shared share-form draft persistence (localStorage) - used by the share form
 // (autosave), My Posts, and the dashboard resume strip. Client-only.
 // Tonight this is the system of record for drafts; server drafts come later.
 
@@ -70,7 +70,7 @@ export function saveDraft(draft: ShareDraft, key: string = DRAFT_KEY) {
   try {
     localStorage.setItem(key, JSON.stringify(draft));
   } catch {
-    // storage full/blocked — drafts are best-effort
+    // storage full/blocked - drafts are best-effort
   }
 }
 
@@ -82,7 +82,7 @@ export function clearDraft(key: string = DRAFT_KEY) {
   }
 }
 
-// A draft only "counts" once the user actually touched something — prevents
+// A draft only "counts" once the user actually touched something - prevents
 // the pristine seed form from showing up as a draft on /me and the dashboard.
 export function draftTouched(d: ShareDraft | null): d is ShareDraft {
   if (!d) return false;

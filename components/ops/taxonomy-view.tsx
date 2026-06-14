@@ -1,7 +1,7 @@
 "use client";
 
 // Ops canonical-entity management (concern #10): companies, round types, and
-// topic tags — the lists students SELECT from. Three tabs; mutations call real
+// topic tags - the lists students SELECT from. Three tabs; mutations call real
 // Server Actions (moderator-gated) and refresh from the server. Data arrives as
 // props (server-loaded); after every change we router.refresh() to re-read.
 import { useState, useTransition } from "react";
@@ -72,7 +72,7 @@ export function TaxonomyView({
       {tab === "topics" && <TopicsTab canManage={canManage} topics={topics} />}
 
       <p className="mt-5 text-[12.5px] leading-[1.6] text-fg-3">
-        Students pick companies, round types, and topics from these lists — they can never
+        Students pick companies, round types, and topics from these lists - they can never
         free-type a new one. A submission naming a company that isn&apos;t here yet rides in as a
         proposal and is resolved in the moderation queue. This is what keeps the data duplicate-free.
       </p>
@@ -190,7 +190,7 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
                       ))}
                     </div>
                   ) : (
-                    <span className="text-fg-4">—</span>
+                    <span className="text-fg-4">-</span>
                   )}
                 </td>
                 <td className={cn(TD, "tabular-nums text-fg-2")}>{c.experiences}</td>
@@ -283,7 +283,7 @@ function RoundsTab({ canManage, roundTypes }: { canManage: boolean; roundTypes: 
     <>
       {canManage && (
         <AddOne
-          placeholder="New round type — e.g. Take-home"
+          placeholder="New round type - e.g. Take-home"
           value={label}
           onChange={setLabel}
           disabled={pending}
@@ -358,7 +358,7 @@ function TopicsTab({ canManage, topics }: { canManage: boolean; topics: OpsTopic
         <div className="mb-3.5 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface px-4 py-3">
           <label className="flex flex-1 flex-col gap-1">
             <span className="text-[11px] font-medium text-fg-3">New topic</span>
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Topic label — e.g. Tries" className={INPUT} />
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Topic label - e.g. Tries" className={INPUT} />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-fg-3">Category</span>

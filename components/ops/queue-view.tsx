@@ -52,7 +52,7 @@ function usePaged<T extends { id: string }>(
       setMoreHasMore(res.hasMore);
       setNextPage((n) => n + 1);
     } catch {
-      toast("Couldn't load more — please try again");
+      toast("Couldn't load more - please try again");
     } finally {
       setLoading(false);
     }
@@ -205,7 +205,7 @@ export function OpsQueueView({
           const ok = await run(
             hideTarget.id,
             () => hideExperience(hideTarget.id, reason),
-            "Post hidden — the author has been notified with your reason",
+            "Post hidden - the author has been notified with your reason",
           );
           if (ok) setHideTarget(null);
         }}
@@ -304,7 +304,7 @@ function ModCard({
 
       {/* Proposed-company resolution (concern #10): the student named a company
           that isn't canonical yet. Map it to an existing one (dedup) or promote
-          it — required before this post can be approved. */}
+          it - required before this post can be approved. */}
       {unresolved && (
         <CompanyResolver
           proposed={item.proposedCompany ?? ""}
@@ -313,7 +313,7 @@ function ModCard({
         />
       )}
 
-      {/* Full post, inline — moderators approve what they actually read */}
+      {/* Full post, inline - moderators approve what they actually read */}
       {open && <FullPost item={item} />}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -337,7 +337,7 @@ function ModCard({
         </Button>
         <Button
           onClick={() =>
-            run(item.id, () => approveExperience(item.id), "Approved — the post is live")
+            run(item.id, () => approveExperience(item.id), "Approved - the post is live")
           }
           disabled={busy || unresolved}
           title={unresolved ? "Resolve the proposed company first" : undefined}
@@ -360,8 +360,8 @@ function ModCard({
         }
         placeholder={
           ask === "reject"
-            ? "Reason (required) — e.g. names an interviewer, NDA violation, factually wrong about the process…"
-            : "Reviewer note (required) — e.g. please remove the interviewer's name in Question 3…"
+            ? "Reason (required) - e.g. names an interviewer, NDA violation, factually wrong about the process…"
+            : "Reviewer note (required) - e.g. please remove the interviewer's name in Question 3…"
         }
         confirmLabel={ask === "reject" ? "Reject post" : "Send back for edits"}
         tone={ask === "reject" ? "red" : "amber"}
@@ -370,7 +370,7 @@ function ModCard({
           const which = ask;
           setAsk(null);
           if (which === "reject")
-            await run(item.id, () => rejectExperience(item.id, text), "Rejected — author notified");
+            await run(item.id, () => rejectExperience(item.id, text), "Rejected - author notified");
           else
             await run(item.id, () => suggestEdits(item.id, text), "Sent back with your note");
         }}
@@ -460,7 +460,7 @@ function PublishedRow({
         </div>
         <div className="mt-0.5 text-xs text-fg-3">
           {hidden
-            ? `Hidden ${item.hiddenAt} — ${item.hiddenReason}`
+            ? `Hidden ${item.hiddenAt} - ${item.hiddenReason}`
             : `Published ${item.publishedAt} · ${item.views} views · ${item.helpful} helpful`}
         </div>
       </div>
@@ -484,7 +484,7 @@ function PublishedRow({
 }
 
 // Proposed-company resolver: map the student's typed name to an existing
-// canonical company (dedup — the typed spelling is folded in as an alias) or
+// canonical company (dedup - the typed spelling is folded in as an alias) or
 // promote it to a new canonical company. The single Ops gate for concern #10.
 function CompanyResolver({
   proposed,
@@ -524,7 +524,7 @@ function CompanyResolver({
     <div className="mb-3 rounded-md border border-amber-border bg-amber-soft/40 p-3.5">
       <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-amber">
         <Icon.warn className="size-4 shrink-0" />
-        New company “{proposed}” — map it to an existing company or add it before approving.
+        New company “{proposed}” - map it to an existing company or add it before approving.
       </div>
 
       <div className="mb-2.5 inline-flex overflow-hidden rounded-md border border-border bg-surface">
@@ -554,7 +554,7 @@ function CompanyResolver({
           />
           {matches.length === 0 ? (
             <p className="px-0.5 text-[12px] text-fg-3">
-              {q.trim().length < 2 ? "Type to search." : "No canonical match — add it as new instead."}
+              {q.trim().length < 2 ? "Type to search." : "No canonical match - add it as new instead."}
             </p>
           ) : (
             <div className="flex flex-col gap-1.5">
@@ -588,7 +588,7 @@ function CompanyResolver({
           <input
             value={newIndustry}
             onChange={(e) => setNewIndustry(e.target.value)}
-            placeholder="Industry (optional) — e.g. Fintech"
+            placeholder="Industry (optional) - e.g. Fintech"
             className={INPUT}
           />
           <Button
@@ -673,7 +673,7 @@ function ReasonModal({
   );
 }
 
-// Hide-with-reason: the reason is REQUIRED (PRD §10 — no silent hides; logged
+// Hide-with-reason: the reason is REQUIRED (PRD §10 - no silent hides; logged
 // to moderation_actions; the author is notified).
 function HideModal({
   target,
@@ -706,7 +706,7 @@ function HideModal({
       <textarea
         value={reason}
         onChange={(ev) => setReason(ev.target.value)}
-        placeholder="Reason (required) — e.g. a factual claim was disputed, identifying details, etc."
+        placeholder="Reason (required) - e.g. a factual claim was disputed, identifying details, etc."
         className="min-h-[100px] w-full resize-y rounded-md border border-border bg-bg-2 px-3 py-2.5 text-[13.5px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]"
       />
       <div className="mt-3.5 flex items-center justify-between gap-3">

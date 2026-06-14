@@ -15,7 +15,7 @@ export async function setSaved(expId: string, on: boolean): Promise<ActionResult
 }
 
 // Fired from the experience page on mount. Deliberately NOT runAction: a view
-// shouldn't purge the router cache on every visit, and failures are silent —
+// shouldn't purge the router cache on every visit, and failures are silent -
 // losing a view beat breaking the page.
 export async function recordView(expId: string): Promise<void> {
   try {

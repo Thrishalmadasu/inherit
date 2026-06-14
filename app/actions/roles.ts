@@ -1,5 +1,5 @@
 "use server";
-// Role management endpoints — SUPER ADMIN only. The action layer enforces the
+// Role management endpoints - SUPER ADMIN only. The action layer enforces the
 // gate; the core re-asserts it (defense in depth).
 import { requireSuperAdmin } from "@/lib/auth";
 import { changeRoleCore } from "@/lib/write/roles";

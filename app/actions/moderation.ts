@@ -23,12 +23,12 @@ export async function approveExperience(expId: string): Promise<ActionResult> {
   // L&D sheet append (PRD §13): runs after the response is sent (Vercel
   // waitUntil under the hood), retries inside, never blocks or fails the
   // publish. The trigger lives here rather than in the core because after()
-  // needs a request scope — the invariant test calls the sync directly.
+  // needs a request scope - the invariant test calls the sync directly.
   if (result.ok) after(() => syncPublishedExperience(expId));
   return result;
 }
 
-// Resolve a proposed company during review (concern #10) — map to an existing
+// Resolve a proposed company during review (concern #10) - map to an existing
 // canonical company or promote it. Any Ops user can do this (it's part of the
 // review), like approve/suggest/reject.
 export async function resolveExperienceCompany(

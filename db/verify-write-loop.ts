@@ -1,10 +1,10 @@
 // End-to-end invariant test for the write loop (Session 2, PRD §7 B/C/E, §10).
 // Drives the REAL write cores against the REAL database as the three seeded
 // roles (student → moderator → student), then asserts through the REAL read
-// queries — exactly what the UI consumes.
+// queries - exactly what the UI consumes.
 //   Run: npx tsx --env-file=.env.local db/verify-write-loop.ts
 // (--env-file, not process.loadEnvFile: lib/db connects at import time.)
-// Leaves test rows behind — reseed afterwards (npx tsx db/seed.ts).
+// Leaves test rows behind - reseed afterwards (npx tsx db/seed.ts).
 import { eq, sql } from "drizzle-orm";
 import { db, schema as s } from "../lib/db";
 import {
@@ -145,7 +145,7 @@ async function main() {
   const student2 = await user("priya.23bcs10112@sst.scaler.com"); // student
   const moderator = await user("riya.23bcs10043@sst.scaler.com"); // moderator
 
-  console.log("\n— Flow B: student submits → under review, FIFO, invisible —");
+  console.log("\n- Flow B: student submits → under review, FIFO, invisible -");
   const id1 = await submitExperienceCore(student1, form("Amazon"));
   const id2 = await submitExperienceCore(student2, form("Microsoft", { anonymous: true }));
   let queue = (await getOpsQueue()).items;
@@ -160,7 +160,7 @@ async function main() {
   const notif1 = await db.select().from(s.notifications).where(eq(s.notifications.experienceId, id1));
   ok(notif1.some((n) => n.type === "post_under_review"), "submit wrote post_under_review notification");
 
-  console.log("\n— Flow E: moderator approves (publishes) —");
+  console.log("\n- Flow E: moderator approves (publishes) -");
   await approveCore(moderator, id1);
   vis = await visibleEverywhere(id1, "amazon");
   ok(vis.feed && vis.direct && vis.companyPage, "approved post visible everywhere");
@@ -180,14 +180,14 @@ async function main() {
   }
   ok(err.includes("no longer"), "double-approve rejected");
 
-  console.log("\n— Flow E: suggest edits → needs_edits with note —");
+  console.log("\n- Flow E: suggest edits → needs_edits with note -");
   await suggestEditsCore(moderator, id2, "Please remove the interviewer's name.");
   mine = await getMyPosts(student2.id);
   const p2 = mine.find((p) => p.id === id2);
   ok(p2?.status === "Needs Edits" && p2.opsNote?.includes("interviewer"), "author sees Needs Edits + note");
   ok(((await getOpsQueue()).items).length === 0, "needs_edits post left the queue");
 
-  console.log("\n— Flow C: edit → resubmit joins the BACK of the queue —");
+  console.log("\n- Flow C: edit → resubmit joins the BACK of the queue -");
   const prefill = await getEditPrefill(id2, student2.id);
   ok(prefill?.form.rounds[0].blocks[0].topics.includes("Sliding Window"), "edit prefill restores topics from DB");
   const id3 = await submitExperienceCore(student1, form("Google")); // queued first
@@ -198,7 +198,7 @@ async function main() {
   mine = await getMyPosts(student2.id);
   ok(mine.find((p) => p.id === id2)?.status === "Under Review", "status reset to Under Review");
 
-  console.log("\n— §10: editing an APPROVED post pulls the live version —");
+  console.log("\n- §10: editing an APPROVED post pulls the live version -");
   const pre1 = await getEditPrefill(id1, student1.id);
   await resubmitExperienceCore(student1, id1, pre1!.form);
   vis = await visibleEverywhere(id1, "amazon");
@@ -208,7 +208,7 @@ async function main() {
   await approveCore(moderator, id1);
   ok((await visibleEverywhere(id1, "amazon")).feed, "re-approved → visible again");
 
-  console.log("\n— Flow E: reject with reason —");
+  console.log("\n- Flow E: reject with reason -");
   await rejectCore(moderator, id3, "Duplicate of an existing post.");
   mine = await getMyPosts(student1.id);
   const p3 = mine.find((p) => p.id === id3);
@@ -221,7 +221,7 @@ async function main() {
   }
   ok(err.includes("reason"), "reject without reason refused");
 
-  console.log("\n— §10: hide a published post (reason required, logged) —");
+  console.log("\n- §10: hide a published post (reason required, logged) -");
   err = "";
   try {
     await hideCore(moderator, id1, "");
@@ -246,13 +246,13 @@ async function main() {
   const opsPub = (await listOpsPublished()).items;
   ok(opsPub.find((e) => e.id === id1)?.hiddenAt != null, "Ops Published view flags the hidden post");
 
-  console.log("\n— §10: unhide reverses (logged) —");
+  console.log("\n- §10: unhide reverses (logged) -");
   await unhideCore(moderator, id1);
   ok((await visibleEverywhere(id1, "amazon")).feed, "unhidden post is live again");
   const modLog2 = await db.select().from(s.moderationActions).where(eq(s.moderationActions.experienceId, id1));
   ok(modLog2.some((m) => m.action === "unhide"), "unhide appended to moderation_actions");
 
-  console.log("\n— author soft-delete / restore —");
+  console.log("\n- author soft-delete / restore -");
   await deleteMyPostCore(student1, id1);
   ok(!(await visibleEverywhere(id1, "amazon")).feed, "author-deleted post vanished from read surfaces");
   mine = await getMyPosts(student1.id);
@@ -260,7 +260,7 @@ async function main() {
   await restoreMyPostCore(student1, id1);
   ok((await visibleEverywhere(id1, "amazon")).feed, "restore brings it back (still approved)");
 
-  console.log("\n— withdraw / resubmit —");
+  console.log("\n- withdraw / resubmit -");
   const id4 = await submitExperienceCore(student2, form("Atlassian"));
   await withdrawMyPostCore(student2, id4);
   ok(!((await getOpsQueue()).items).some((q) => q.id === id4), "withdrawn post left the queue");
@@ -270,7 +270,7 @@ async function main() {
   queue = (await getOpsQueue()).items;
   ok(queue[queue.length - 1].id === id4, "resubmitted withdrawal joins the back of the queue");
 
-  console.log("\n— authorization edges —");
+  console.log("\n- authorization edges -");
   err = "";
   try {
     await resubmitExperienceCore(student1, id4, form("Atlassian")); // not the author
@@ -293,7 +293,7 @@ async function main() {
   const expRow = async (id: string) =>
     (await db.select().from(s.experiences).where(eq(s.experiences.id, id)))[0];
 
-  console.log("\n— engagement: Helpful votes (cached count ↔ reaction rows) —");
+  console.log("\n- engagement: Helpful votes (cached count ↔ reaction rows) -");
   await setHelpfulCore(student2, id1, true);
   ok((await expRow(id1)).helpfulCount === 1, "helpful on → cached count 1");
   await setHelpfulCore(student2, id1, true);
@@ -328,7 +328,7 @@ async function main() {
   }
   ok(err.includes("not found"), "helpful on a non-live post refused");
 
-  console.log("\n— engagement: view counts (every open counts) —");
+  console.log("\n- engagement: view counts (every open counts) -");
   await recordViewCore(student2, id1);
   await recordViewCore(student2, id1);
   ok((await expRow(id1)).viewCount === 2, "same user opening twice counts twice (total opens)");
@@ -341,7 +341,7 @@ async function main() {
     "feed card carries the real count (the Most-viewed sort input)",
   );
 
-  console.log("\n— engagement: saves + the visibility invariant —");
+  console.log("\n- engagement: saves + the visibility invariant -");
   await setSavedCore(student2, id1, true);
   await setSavedCore(student2, id1, true); // idempotent
   let savedList = (await getSavedExperiences(student2.id)).items;
@@ -354,9 +354,9 @@ async function main() {
   await setSavedCore(student2, id1, false);
   ok(((await getSavedExperiences(student2.id)).items).length === 0, "unsave removes it");
 
-  console.log("\n— Flow F: invite-to-share (CSV → campaign + recipients, NO dedupe) —");
+  console.log("\n- Flow F: invite-to-share (CSV → campaign + recipients, NO dedupe) -");
   // Header aliases on purpose (full_name/email_address/employer/position/stage).
-  // student1 already has a live post AND the same email appears twice — with no
+  // student1 already has a live post AND the same email appears twice - with no
   // dedupe every valid row still sends (per-experience invites; Ops owns it).
   const inviteCsv = [
     "full_name,email_address,employer,position,stage",
@@ -369,7 +369,7 @@ async function main() {
     csv: inviteCsv,
     fileName: "verify.csv",
     subject: "Share your {{company}} interview",
-    body: "Hi {{name}} — {{role}}, {{round}}.",
+    body: "Hi {{name}} - {{role}}, {{round}}.",
   });
   ok(
     sent1.sent === 3 && sent1.errors === 1,
@@ -412,10 +412,10 @@ async function main() {
   });
   ok(
     rerun.sent === 3 && rerun.errors === 1,
-    "re-running the SAME CSV sends again — no cross-campaign dedupe (the fix)",
+    "re-running the SAME CSV sends again - no cross-campaign dedupe (the fix)",
   );
 
-  console.log("\n— Flow F: manually-added recipients (no CSV) —");
+  console.log("\n- Flow F: manually-added recipients (no CSV) -");
   const manualRes = await sendInvitesCore(moderator, {
     csv: "",
     manual: [
@@ -428,7 +428,7 @@ async function main() {
   });
   ok(
     manualRes.sent === 1 && manualRes.errors === 1,
-    "manual recipients send with no CSV (valid sends; missing-email errors) — same classifier",
+    "manual recipients send with no CSV (valid sends; missing-email errors) - same classifier",
   );
   const mixedRes = await sendInvitesCore(moderator, {
     csv: "name,email\nCsv Row,csv.row.23bcs10501@sst.scaler.com",
@@ -454,7 +454,7 @@ async function main() {
     "manual rows are recorded in the same audit trail (sent + skipped-with-reason)",
   );
 
-  console.log("\n— Flow F: dispatch failure → row marked failed, re-sendable —");
+  console.log("\n- Flow F: dispatch failure → row marked failed, re-sendable -");
   const failEmail = "failcase.23bcs10001@sst.scaler.com";
   setEmailSenderForTest({
     ...captureSender,
@@ -479,7 +479,7 @@ async function main() {
     "failed dispatch recorded on the row (re-send by re-uploading the CSV)",
   );
 
-  console.log("\n— roadmap #5: review-status emails (Flow D) —");
+  console.log("\n- roadmap #5: review-status emails (Flow D) -");
   sentEmails.length = 0;
   // Make this company canonical up front so the submissions below bind directly
   // (concern #10 added the resolve-before-approve gate; this section is about
@@ -546,7 +546,7 @@ async function main() {
     "reject → 'wasn't approved' email",
   );
 
-  console.log("\n— roadmap #5: L&D sheet rows (PRD §13) —");
+  console.log("\n- roadmap #5: L&D sheet rows (PRD §13) -");
   const sheetExp = await loadSheetExperience(sheetExpId);
   const rows = buildSheetRows(sheetExp!, "https://example.test");
   ok(
@@ -595,7 +595,7 @@ async function main() {
   ok(appended.length === 1, "a non-live (rejected) post never reaches the sheet");
   setSheetSyncForTest(null);
 
-  console.log("\n— roadmap #1/#2: role management (super-admin only, audited) —");
+  console.log("\n- roadmap #1/#2: role management (super-admin only, audited) -");
   const superAdmin = await user("thrishal.23bcs10115@sst.scaler.com"); // super_admin
   const rejects = async (fn: () => Promise<unknown>): Promise<string> => {
     try {
@@ -664,13 +664,13 @@ async function main() {
   );
 
   // #4: destructive hide/unhide gate is the ROLE (requireModerator), never the
-  // OPS_EMAILS bootstrap — so a student helping triage can't hide a live post.
+  // OPS_EMAILS bootstrap - so a student helping triage can't hide a live post.
   const freshStudent = await user("nikhil.23bcs10071@sst.scaler.com"); // untouched student
   ok(!isModerator(freshStudent), "a student is NOT a moderator (hide gate is role-only)");
   ok(isModerator(moderator), "a moderator passes the destructive-action gate");
   ok(isModerator(await user("thrishal.23bcs10115@sst.scaler.com")), "a super admin counts as moderator");
 
-  console.log("\n— concern #10: canonical entities, zero duplicates —");
+  console.log("\n- concern #10: canonical entities, zero duplicates -");
 
   // Canonical round/topic validation: students can only use active DB rows.
   ok(
@@ -687,7 +687,7 @@ async function main() {
     "non-canonical round type refused at submit",
   );
 
-  // Proposed-company flow: an unknown company is NOT auto-created — it rides as
+  // Proposed-company flow: an unknown company is NOT auto-created - it rides as
   // a proposed name until a moderator resolves it (the single gate).
   const propId = await submitExperienceCore(student1, form("Goldman Sachs Pvt"));
   let propRow = await expRow(propId);
@@ -732,7 +732,7 @@ async function main() {
   const varId2 = await submitExperienceCore(student1, form("Amzn"));
   ok(
     (await expRow(varId2)).companyId === amazon.id,
-    "the next submission of that spelling auto-binds — no second proposal",
+    "the next submission of that spelling auto-binds - no second proposal",
   );
 
   // Taxonomy management (moderator-gated): add / rename-propagation / merge.

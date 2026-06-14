@@ -2,12 +2,12 @@
 
 // Client half of Invite-to-share (PRD §7 Flow F), ported from the design
 // prototype's outreach-page.jsx. Send-only V1: no KPI strip, no campaigns
-// table — those ship with Ops Analytics.
+// table - those ship with Ops Analytics.
 //
 // Parsing + email validation run in-browser for instant feedback; the Send
 // action re-parses and re-validates the same raw CSV server-side before
 // writing (the client is never trusted). NO dedupe (2026-06-13): every row
-// with a valid email sends — duplicates and re-runs included.
+// with a valid email sends - duplicates and re-runs included.
 import { useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { BrandMark } from "@/components/brand";
@@ -55,7 +55,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
   const [focusTarget, setFocusTarget] = useState<"subject" | "body">("body");
 
   const parsed = useMemo(() => (rawCsv ? parseCsv(rawCsv) : []), [rawCsv]);
-  // CSV rows first, then manually-entered rows — same order the server uses.
+  // CSV rows first, then manually-entered rows - same order the server uses.
   const recipients = useMemo(
     () => [...buildRecipients(parsed), ...buildManualRecipients(manual)],
     [parsed, manual],
@@ -152,12 +152,12 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
                 <strong className="font-semibold text-red">
                   {justSent.failed} failed to dispatch
                 </strong>{" "}
-                — failed recipients stay re-invitable: re-upload the same CSV to
+                - failed recipients stay re-invitable: re-upload the same CSV to
                 retry just them.
               </>
             )}
             {!emailLive &&
-              " (Email dispatch is currently stubbed — no RESEND_API_KEY set; sends are logged server-side.)"}
+              " (Email dispatch is currently stubbed - no RESEND_API_KEY set; sends are logged server-side.)"}
           </div>
           <button
             type="button"
@@ -176,7 +176,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
           <CardHeader
             n={1}
             title="Add recipients"
-            sub="Drop a CSV of students you'd like to nudge — or add them one at a time below. One row per experience you want written up. Every row with a valid email gets an invite (no dedupe; duplicates and re-runs all send)."
+            sub="Drop a CSV of students you'd like to nudge - or add them one at a time below. One row per experience you want written up. Every row with a valid email gets an invite (no dedupe; duplicates and re-runs all send)."
           />
           <DropZone
             onCsv={setCsv}
@@ -366,7 +366,7 @@ function DropZone({
     const reader = new FileReader();
     reader.onload = () => onCsv(String(reader.result), file.name);
     reader.readAsText(file);
-    // Reset the input so re-selecting the SAME file fires onChange again —
+    // Reset the input so re-selecting the SAME file fires onChange again -
     // Ops re-uploads the same CSV to retry failed rows after a send.
     if (inputRef.current) inputRef.current.value = "";
   };
@@ -662,7 +662,7 @@ function RecipientsTable({
               >
                 <div>
                   <div className="flex items-center gap-1.5 font-semibold text-fg">
-                    {r.name || "—"}
+                    {r.name || "-"}
                     {manualIndex !== null && (
                       <span className="rounded-full border border-border bg-surface-3 px-1.5 py-px text-[9.5px] font-medium uppercase tracking-[0.04em] text-fg-3">
                         Manual
@@ -670,12 +670,12 @@ function RecipientsTable({
                     )}
                   </div>
                   <div className={cn("mt-0.5 truncate text-xs text-fg-3", MONO)}>
-                    {r.email || <em>—</em>}
+                    {r.email || <em>-</em>}
                   </div>
                 </div>
-                <div className="text-fg-2">{r.company || "—"}</div>
+                <div className="text-fg-2">{r.company || "-"}</div>
                 <div>
-                  <div>{r.role || "—"}</div>
+                  <div>{r.role || "-"}</div>
                   {r.round && <div className="mt-0.5 text-[11.5px] text-fg-3">{r.round}</div>}
                 </div>
                 <div className="flex flex-col items-end gap-1 text-right">

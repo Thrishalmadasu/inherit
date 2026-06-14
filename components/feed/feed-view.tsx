@@ -44,7 +44,7 @@ export function FeedView({ initial }: { initial: FeedPage }) {
   const didMount = useRef(false);
 
   // Re-query page 1 from the server whenever a filter/sort changes (skip the
-  // initial render — the server already provided page 1).
+  // initial render - the server already provided page 1).
   useEffect(() => {
     if (!didMount.current) {
       didMount.current = true;
@@ -72,7 +72,7 @@ export function FeedView({ initial }: { initial: FeedPage }) {
       setPage(res.page);
       setHasMore(res.hasMore);
     } catch {
-      toast("Couldn't load more — please try again");
+      toast("Couldn't load more - please try again");
     } finally {
       setLoadingMore(false);
     }

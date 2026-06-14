@@ -6,8 +6,8 @@
 // path for service accounts.
 //
 // Env (both required for this driver to be selected):
-//   GOOGLE_SERVICE_ACCOUNT_KEY — the service account's JSON key, verbatim
-//   LD_SHEET_ID                — the target spreadsheet id (from its URL)
+//   GOOGLE_SERVICE_ACCOUNT_KEY - the service account's JSON key, verbatim
+//   LD_SHEET_ID                - the target spreadsheet id (from its URL)
 // The sheet must be SHARED with the service account's client_email (Editor).
 import { createSign } from "node:crypto";
 import type { SheetSync } from "./index";
@@ -27,7 +27,7 @@ function credentials(): { clientEmail: string; privateKey: string } {
   return { clientEmail: json.client_email, privateKey: json.private_key.replace(/\\n/g, "\n") };
 }
 
-// Module-scope token cache — warm serverless invocations reuse it.
+// Module-scope token cache - warm serverless invocations reuse it.
 let cached: { token: string; expiresAt: number } | null = null;
 
 async function accessToken(): Promise<string> {

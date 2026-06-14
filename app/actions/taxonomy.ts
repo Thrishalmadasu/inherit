@@ -1,5 +1,5 @@
 "use server";
-// Ops taxonomy-management endpoints (concern #10). Moderator+ only — managing
+// Ops taxonomy-management endpoints (concern #10). Moderator+ only - managing
 // the canonical companies / round types / topics shapes every student's
 // choices and a merge moves real data. The action layer enforces the gate; the
 // cores re-assert it (defense in depth).

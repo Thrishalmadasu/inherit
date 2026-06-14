@@ -1,4 +1,4 @@
-// Inherit — Drizzle schema (PRD §9). The data model is the legacy: invariants
+// Inherit - Drizzle schema (PRD §9). The data model is the legacy: invariants
 // live here, enforced by Postgres, not by per-screen convention.
 //
 // Conventions:
@@ -69,18 +69,18 @@ export const inviteRecipientStatus = pgEnum("invite_recipient_status", [
 ]);
 // Only invalid_email / missing_email are still written: invite dedupe was
 // removed 2026-06-13 (every valid row sends; Ops invites per experience). The
-// three dedupe reasons are LEGACY — kept because Postgres can't drop enum
+// three dedupe reasons are LEGACY - kept because Postgres can't drop enum
 // values without a type rebuild, and the TS enum must match the live DB type.
 // ⚠️ TODO at the Neon-account switch: the fresh DB builds this enum from
 // scratch, so DELETE the three "legacy" lines below BEFORE the first
-// `drizzle-kit push` against the new database — that's the clean moment to
+// `drizzle-kit push` against the new database - that's the clean moment to
 // shed them (nothing writes them; no rows reference them in a fresh DB).
 export const inviteSkipReason = pgEnum("invite_skip_reason", [
-  "duplicate_in_file", // legacy (dedupe removed) — drop at fresh-DB migration
-  "already_shared", // legacy (dedupe removed) — drop at fresh-DB migration
+  "duplicate_in_file", // legacy (dedupe removed) - drop at fresh-DB migration
+  "already_shared", // legacy (dedupe removed) - drop at fresh-DB migration
   "invalid_email",
   "missing_email",
-  "already_invited", // legacy (dedupe removed) — drop at fresh-DB migration
+  "already_invited", // legacy (dedupe removed) - drop at fresh-DB migration
 ]);
 
 // ── Core tables ──────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ export const companies = pgTable("companies", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Canonical pipeline-round vocabulary (concern #10 — no duplicate rounds). Ops-
+// Canonical pipeline-round vocabulary (concern #10 - no duplicate rounds). Ops-
 // managed exactly like topic_tags: students SELECT from this list in the share
 // form; only Ops adds/renames. `rounds.name` stores the canonical label, kept
 // in sync by the rename core. `position` orders the share-form dropdown.
@@ -126,8 +126,8 @@ export const experiences = pgTable("experiences", {
     .references(() => users.id),
   // Nullable: a submission naming a company NOT in the canonical list rides as
   // a PROPOSED name (companyId NULL, proposedCompanyName set) until a moderator
-  // resolves it during review — map to an existing company (dedup) or promote
-  // to canonical. Auto-creation is gone (concern #10 — Ops is the single gate).
+  // resolves it during review - map to an existing company (dedup) or promote
+  // to canonical. Auto-creation is gone (concern #10 - Ops is the single gate).
   // Every approved/visible experience has companyId set (approval requires it).
   companyId: uuid("company_id").references(() => companies.id),
   proposedCompanyName: text("proposed_company_name"),
@@ -146,17 +146,17 @@ export const experiences = pgTable("experiences", {
   durationMinutes: integer("duration_minutes"),
   importedFromArchive: boolean("imported_from_archive").notNull().default(false),
   withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
-  // author soft-delete — never hard-deleted
+  // author soft-delete - never hard-deleted
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: uuid("deleted_by").references(() => users.id),
-  // Ops hide of a LIVE post — reason REQUIRED at the action layer
+  // Ops hide of a LIVE post - reason REQUIRED at the action layer
   hiddenAt: timestamp("hidden_at", { withTimezone: true }),
   hiddenBy: uuid("hidden_by").references(() => users.id),
   hiddenReason: text("hidden_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
-  // L&D sheet sync stamp (PRD §13) — set once when the rows reach the sheet.
+  // L&D sheet sync stamp (PRD §13) - set once when the rows reach the sheet.
   // NULL = not synced yet; append-on-FIRST-publish keys off this.
   sheetSyncedAt: timestamp("sheet_synced_at", { withTimezone: true }),
 });
@@ -220,7 +220,7 @@ export const prepTips = pgTable("prep_tips", {
   category: tipCategory("category").notNull(),
 });
 
-// Helpful-only like — UNIQUE(user, experience) is the one-vote invariant.
+// Helpful-only like - UNIQUE(user, experience) is the one-vote invariant.
 export const reactions = pgTable(
   "reactions",
   {
@@ -286,7 +286,7 @@ export const moderationActions = pgTable("moderation_actions", {
     .notNull()
     .references(() => users.id),
   action: moderationActionType("action").notNull(),
-  reason: text("reason"), // REQUIRED for "hide" — enforced in the action layer
+  reason: text("reason"), // REQUIRED for "hide" - enforced in the action layer
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

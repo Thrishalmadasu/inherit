@@ -1,6 +1,6 @@
 import { InviteView } from "@/components/ops/invite-view";
 
-// Invite-to-share (PRD §7 Flow F) — CSV upload → validate emails → compose
+// Invite-to-share (PRD §7 Flow F) - CSV upload → validate emails → compose
 // with merge tags → batch send. Send-only V1, NO dedupe (every valid row
 // sends; Ops invites per experience). emailLive tells the banner whether real
 // emails go out or the console stub logs them (lib/email driver selection).

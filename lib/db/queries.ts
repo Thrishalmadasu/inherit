@@ -34,7 +34,7 @@ const fmtDate = (d: Date | null) =>
 const batchOf = (year: number | null) => (year ? `'${String(year).slice(2)}` : "'27");
 // Display company name: the canonical row's name, or the proposed name for an
 // as-yet-unresolved under-review post (author/Ops surfaces only).
-const companyNameOf = (l: Loaded) => l.company?.name ?? l.exp.proposedCompanyName ?? "—";
+const companyNameOf = (l: Loaded) => l.company?.name ?? l.exp.proposedCompanyName ?? "-";
 const daysSince = (d: Date | null) =>
   d ? Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000)) : 999;
 
@@ -42,7 +42,7 @@ const daysSince = (d: Date | null) =>
 type Loaded = {
   exp: typeof s.experiences.$inferSelect;
   // null only for under-review posts naming a not-yet-canonical (proposed)
-  // company — those surface ONLY in author/Ops reads. Every visibleExp row has
+  // company - those surface ONLY in author/Ops reads. Every visibleExp row has
   // a company (approval requires the proposed name be resolved first).
   company: typeof s.companies.$inferSelect | null;
   author: typeof s.users.$inferSelect;
@@ -204,7 +204,7 @@ const blockTypeLabel = (t: string) =>
 
 // ── Public queries ───────────────────────────────────────────────────────────
 export async function listCompanies(): Promise<CompanyListItem[]> {
-  // Per-company count + latest publish date aggregated in SQL (GROUP BY) —
+  // Per-company count + latest publish date aggregated in SQL (GROUP BY) -
   // no experience hydration, no full-corpus scan.
   const [companies, stats] = await Promise.all([
     db.select().from(s.companies).orderBy(s.companies.name),
@@ -311,7 +311,7 @@ export async function getExperience(
   const [found] = await loadWhere(and(visibleExp, eq(s.experiences.id, id)), desc(s.experiences.publishedAt));
   if (!found || !found.company) return null; // visible ⇒ company always set
   const company = found.company;
-  // ≤4 related from the same company — scoped in SQL, not a full-corpus scan.
+  // ≤4 related from the same company - scoped in SQL, not a full-corpus scan.
   const relatedRows = await loadWhere(
     and(visibleExp, eq(s.experiences.companyId, company.id), ne(s.experiences.id, id)),
     desc(s.experiences.publishedAt),
@@ -338,7 +338,7 @@ export async function latestExperiences(n: number): Promise<Experience[]> {
   return rows.map(toCard);
 }
 
-// Server-side experience search (Tier-3) — matches role / company / round name,
+// Server-side experience search (Tier-3) - matches role / company / round name,
 // bounded by `limit`, so /search no longer loads the whole corpus to filter.
 export async function searchExperiences(q: string, limit = 20): Promise<Experience[]> {
   const t = q.trim();
@@ -463,7 +463,7 @@ export async function getSavedExperiences(
 ): Promise<Paginated<Experience>> {
   const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
   // Join saved → experiences so the visibility invariant (hidden/deleted drop
-  // out) is applied BEFORE paginating — total + page stay consistent.
+  // out) is applied BEFORE paginating - total + page stay consistent.
   const base = and(eq(s.savedExperiences.userId, userId), visibleExp);
   const savedJoin = db
     .select({ experienceId: s.savedExperiences.experienceId, savedAt: s.savedExperiences.createdAt })
@@ -546,7 +546,7 @@ export async function getMyPosts(userId: string): Promise<MyPost[]> {
   });
 }
 
-// The author's newest live submission awaiting review — the /under-review page
+// The author's newest live submission awaiting review - the /under-review page
 // and the dashboard strip. Withdrawn/deleted posts don't count.
 const pendingFor = (userId: string) =>
   and(
@@ -610,7 +610,7 @@ export async function getOpsQueue(opts?: {
     // (concern #10). Null once bound to a canonical company.
     proposedCompany: l.exp.companyId ? null : (l.exp.proposedCompanyName ?? null),
     role: l.exp.roleTitle,
-    round: l.rounds[0]?.name ?? "—",
+    round: l.rounds[0]?.name ?? "-",
     outcome: l.exp.overallOutcome,
     submittedAgo: agoOf(l.exp.createdAt),
     questions: l.rounds.reduce((n, r) => n + r.blocks.length, 0),
@@ -622,7 +622,7 @@ export async function getOpsQueue(opts?: {
   return { items, total, hasMore: offset + pending.length < total };
 }
 
-// Published view for Ops: approved & not author-deleted — hidden posts stay
+// Published view for Ops: approved & not author-deleted - hidden posts stay
 // listed (flagged) so they can be unhidden.
 export async function listOpsPublished(opts?: {
   page?: number;
@@ -638,7 +638,7 @@ export async function listOpsPublished(opts?: {
     id: l.exp.id,
     company: companyNameOf(l),
     role: l.exp.roleTitle,
-    round: l.rounds[0]?.name ?? "—",
+    round: l.rounds[0]?.name ?? "-",
     outcome: l.exp.overallOutcome,
     publishedAt: fmtDate(l.exp.publishedAt),
     views: l.exp.viewCount,
@@ -665,7 +665,7 @@ export interface OpsUsersPage {
   totalPages: number;
 }
 
-// Admins/moderators float to the top, then alphabetical — the list is bounded
+// Admins/moderators float to the top, then alphabetical - the list is bounded
 // (LIMIT/OFFSET) so it scales past a handful of rows, and `q` matches name OR
 // email (case-insensitive).
 const roleRank = sql`case ${s.users.role} when 'super_admin' then 0 when 'moderator' then 1 else 2 end`;
@@ -795,7 +795,7 @@ export async function getEditPrefill(
 
 // Invite-to-share has NO dedupe (product decision 2026-06-13): Ops invites
 // students per experience, so the campaign send re-parses the CSV and emails
-// every valid row — there is no "already shared / already invited" lookup.
+// every valid row - there is no "already shared / already invited" lookup.
 
 // ── Canonical vocabularies (concern #10) ─────────────────────────────────────
 // The share form SELECTs companies / round types / topic tags from the DB, so
@@ -923,7 +923,7 @@ export async function listOpsTopics(): Promise<OpsTopicRow[]> {
   }));
 }
 
-// Company typeahead for the Ops review step (resolving a proposed company) —
+// Company typeahead for the Ops review step (resolving a proposed company) -
 // canonical companies matching `q` by name or alias, bounded.
 export async function searchCompanies(
   q: string,

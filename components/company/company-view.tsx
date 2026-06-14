@@ -130,7 +130,7 @@ export function CompanyView({ company }: { company: CompanyPageData }) {
           />
         </div>
 
-        {/* Funnel — how far experiences progressed through the pipeline */}
+        {/* Funnel - how far experiences progressed through the pipeline */}
         {company.commonPath.length > 0 && (
           <div className="mb-3.5 rounded-lg border border-border bg-surface px-5 pb-5 pt-[18px]">
             <div className="mb-4 flex items-center justify-between">
@@ -232,7 +232,7 @@ export function CompanyView({ company }: { company: CompanyPageData }) {
             <strong className="mb-1.5 block font-semibold text-fg">
               No experiences match these filters.
             </strong>
-            Try clearing a filter — or be the first to share for this slice.
+            Try clearing a filter - or be the first to share for this slice.
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">

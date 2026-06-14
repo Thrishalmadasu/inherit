@@ -29,7 +29,7 @@ export default async function UnderReviewPage() {
           </h1>
           <p className="mx-auto mb-8 max-w-[460px] text-sm leading-[1.6] text-fg-2">
             When you submit an experience it waits here while Placement Ops
-            reviews it — first-in, first-out.
+            reviews it - first-in, first-out.
           </p>
           <div className="flex justify-center gap-2.5">
             <Button href="/me">My posts</Button>
@@ -76,7 +76,7 @@ export default async function UnderReviewPage() {
               </h1>
               <p className="m-0 max-w-[640px] text-sm leading-[1.6] text-fg-2">
                 Submitted {pending.submittedAgo}. Placement Ops reviews
-                first-in-first-out — we&apos;ll email you at{" "}
+                first-in-first-out - we&apos;ll email you at{" "}
                 <b className="text-fg">{user.sstEmail}</b> the moment it goes
                 live. You can edit or withdraw it until then.
               </p>

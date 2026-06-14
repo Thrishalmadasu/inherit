@@ -1,9 +1,9 @@
 // L&D sheet row shapes + the pure mapping from a published experience's
 // content (PRD §13). Two row types, matching the L&D tracker:
-//   Technical  — one row per coding / system_design block
-//   Behavioral — one row per behavioral block
+//   Technical  - one row per coding / system_design block
+//   Behavioral - one row per behavioral block
 // `open` blocks don't sync (PRD lists only these two shapes). No author
-// identity in either row — anonymity (PRD §11) extends to the sheet.
+// identity in either row - anonymity (PRD §11) extends to the sheet.
 //
 // Column order/casing is provisional until L&D confirms their tracker's
 // exact shape (PRD §15 Q6): adjust *_HEADERS and *Cells here, nothing else.
@@ -45,7 +45,7 @@ export interface TechnicalRow {
   round: string; // pipeline label ("OA", "Tech 1", …)
   category: "Coding" | "System Design";
   topics: string[]; // non-tooling tag labels
-  isDsa: boolean; // any tag with is_dsa — the L&D DSA/non-DSA split
+  isDsa: boolean; // any tag with is_dsa - the L&D DSA/non-DSA split
   tools: string[]; // tooling-category tags + the round's platform
   difficulty: number | null; // 1–5
   question: string; // the prompt paraphrase
@@ -68,7 +68,7 @@ export interface SheetRows {
   behavioral: BehavioralRow[];
 }
 
-// Header rows for the two tabs — paste these as row 1 when creating the sheet
+// Header rows for the two tabs - paste these as row 1 when creating the sheet
 // (the sync only appends data rows; it never writes headers).
 export const TECHNICAL_HEADERS = [
   "Published", "Company", "Role", "Cycle", "Round", "Category",
@@ -121,7 +121,7 @@ export function buildSheetRows(exp: SheetExperience, origin: string): SheetRows 
   return { technical, behavioral };
 }
 
-// Serialization for values.append — order must match *_HEADERS above.
+// Serialization for values.append - order must match *_HEADERS above.
 type Cell = string | number;
 const list = (xs: string[]) => xs.join(", ");
 

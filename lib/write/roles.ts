@@ -1,9 +1,9 @@
-// Write core for role management (PRD §10 — Ops/admin). Same contract as the
+// Write core for role management (PRD §10 - Ops/admin). Same contract as the
 // other cores: explicit actor (testable without Clerk), no "use server", one
 // db.batch() so the role change and its audit row land together or not at all.
 //
 // Authorization is enforced at the action layer (requireSuperAdmin) AND
-// re-asserted here — the core takes an explicit actor and must never trust the
+// re-asserted here - the core takes an explicit actor and must never trust the
 // caller to have checked. Only a super admin can change roles.
 import { eq } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
@@ -29,7 +29,7 @@ export async function changeRoleCore(
   const fromRole = target.role;
   if (fromRole === toRole) throw new WriteError(`Already a ${toRole.replace("_", " ")}`);
 
-  // Lockout guard: never demote the last super admin — that would leave nobody
+  // Lockout guard: never demote the last super admin - that would leave nobody
   // able to manage roles (the SUPER_ADMIN_EMAILS bootstrap aside, which is meant
   // to be removed once roles are seeded).
   if (fromRole === "super_admin" && toRole !== "super_admin") {
@@ -38,7 +38,7 @@ export async function changeRoleCore(
       .from(s.users)
       .where(eq(s.users.role, "super_admin"));
     if (admins.length <= 1)
-      throw new WriteError("Can't demote the last super admin — promote someone else first");
+      throw new WriteError("Can't demote the last super admin - promote someone else first");
   }
 
   await db.batch([

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // ?edit=<id> → load the author's own post from the DB and hand it to the form
 // as a prefill (the form layers any in-progress edit draft on top of it).
 // ?company=&role=&round= → invite-link landing (PRD §7 Flow F #6): start the
-// form pre-filled from the CSV row. An in-progress draft still wins — the
+// form pre-filled from the CSV row. An in-progress draft still wins - the
 // form only uses the prefill when there's no saved draft.
 export default async function SharePage(props: PageProps<"/share">) {
   const sp = await props.searchParams;

@@ -1,4 +1,4 @@
-// Drizzle client over Neon's serverless HTTP driver — suited to Vercel's
+// Drizzle client over Neon's serverless HTTP driver - suited to Vercel's
 // serverless runtime (no TCP pooling to manage).
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";

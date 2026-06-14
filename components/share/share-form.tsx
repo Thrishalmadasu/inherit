@@ -70,7 +70,7 @@ export function ShareForm({
   const [submitting, setSubmitting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  // Debounced autosave — only after the user actually touches the form. Persist
+  // Debounced autosave - only after the user actually touches the form. Persist
   // the current step too, so a mid-fill reload resumes in place (re-runs on
   // step changes, not just field edits).
   const dirtyRef = useRef(false);
@@ -96,7 +96,7 @@ export function ShareForm({
   );
 
   // Validate locally first (instant feedback), then hand the raw form to the
-  // Server Action — it re-sanitizes and re-validates; never trust the client.
+  // Server Action - it re-sanitizes and re-validates; never trust the client.
   const submit = async () => {
     const check = sharePayloadSchema.safeParse(sanitizeShareForm(form));
     if (!check.success) {
@@ -111,7 +111,7 @@ export function ShareForm({
       return;
     }
     clearDraft(draftKey);
-    toast(editId ? "Resubmitted — back in the review queue" : "Submitted for review");
+    toast(editId ? "Resubmitted - back in the review queue" : "Submitted for review");
     router.push("/under-review");
   };
 
@@ -253,7 +253,7 @@ function StepBasics({
       </button>
       {tipsOpen && (
         <ul className="-mt-5 mb-5 list-disc rounded-b-md border border-t-0 border-border bg-surface py-3 pl-9 pr-4 text-[13px] leading-[1.7] text-fg-2">
-          <li>Specifics beat summaries — name the topics, not just &ldquo;DSA questions&rdquo;.</li>
+          <li>Specifics beat summaries - name the topics, not just &ldquo;DSA questions&rdquo;.</li>
           <li>Rejections are the most valuable posts. Share what you&apos;d do differently.</li>
           <li>Don&apos;t name interviewers or share anything under NDA.</li>
         </ul>
@@ -263,7 +263,7 @@ function StepBasics({
         label="Company"
         value={form.company}
         onChange={(company) => update({ company })}
-        placeholder="Start typing — e.g. Amazon"
+        placeholder="Start typing - e.g. Amazon"
         options={options.companies.map((c) => ({ main: c.name, sub: c.industry }))}
         hint="Pick from the list where you can. A new company is reviewed by Ops before it's added."
       />
@@ -343,7 +343,7 @@ function StepRounds({
         <p className="text-sm leading-[1.55] text-fg-2">
           Add each stage you went through. Quick mode takes seconds; add details
           with typed blocks (coding, system design, behavioral, open) where you
-          have more to share — a single round can mix types.
+          have more to share - a single round can mix types.
         </p>
       </header>
 
@@ -355,7 +355,7 @@ function StepRounds({
         {form.rounds.map((r, i) => (
           <Fragment key={i}>
             <PipeChip status={r.status} size="default" dashed={!r.detailed}>
-              {r.round || "—"}
+              {r.round || "-"}
             </PipeChip>
             {i < form.rounds.length - 1 && (
               <Icon.arrow className="size-3.5 shrink-0 text-fg-4" />
@@ -415,7 +415,7 @@ function StepTips({
       <header className="mb-[22px]">
         <h1 className="mb-1 text-[26px] font-bold tracking-[-0.02em]">Prep tips</h1>
         <p className="text-sm leading-[1.55] text-fg-2">
-          Short, concrete pointers — the resources, strategies, and mindset that
+          Short, concrete pointers - the resources, strategies, and mindset that
           actually helped.
         </p>
       </header>
@@ -514,7 +514,7 @@ function StepReflections({
       <textarea
         value={form.reflection}
         onChange={(e) => update({ reflection: e.target.value })}
-        placeholder="The OA itself isn't unreasonable — what makes it stressful is…"
+        placeholder="The OA itself isn't unreasonable - what makes it stressful is…"
         className={cn(INPUT, "min-h-[220px] resize-y py-3 leading-[1.65]")}
       />
       <div
@@ -554,7 +554,7 @@ function StepIdentity({
         <h1 className="mb-1 text-[26px] font-bold tracking-[-0.02em]">Identity &amp; submit</h1>
         <p className="text-sm leading-[1.55] text-fg-2">
           Real names build trust; anonymity protects honesty. Either way, Ops can
-          see your identity for review — readers see what you pick here.
+          see your identity for review - readers see what you pick here.
         </p>
       </header>
 
@@ -582,9 +582,9 @@ function StepIdentity({
           Submission summary
         </h3>
         <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13.5px]">
-          <SummaryK k="Company" v={form.company || "—"} />
-          <SummaryK k="Role · Cycle" v={`${form.role || "—"} · ${form.year}`} />
-          <SummaryK k="Overall outcome" v={form.outcome || "—"} />
+          <SummaryK k="Company" v={form.company || "-"} />
+          <SummaryK k="Role · Cycle" v={`${form.role || "-"} · ${form.year}`} />
+          <SummaryK k="Overall outcome" v={form.outcome || "-"} />
           <span className="text-fg-3">Pipeline</span>
           <span className="flex flex-wrap items-center gap-1">
             {form.rounds.map((r, i) => (
@@ -736,7 +736,7 @@ function Combo({
         <span className="text-[11.5px] leading-[1.5] text-fg-3">
           {isNew ? (
             <span className="text-amber">
-              “{value.trim()}” isn&apos;t in our list yet — Ops will confirm or match it during review.
+              “{value.trim()}” isn&apos;t in our list yet - Ops will confirm or match it during review.
             </span>
           ) : (
             hint

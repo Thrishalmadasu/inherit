@@ -45,7 +45,7 @@ export default async function DashboardPage() {
             What are you prepping for <span className="text-blue">today?</span>
           </h1>
           <p className="mb-6 text-[15px] leading-[1.55] text-fg-2">
-            Every OA, interview, and offer your batchmates have been through —
+            Every OA, interview, and offer your batchmates have been through -
             searchable in one place.
           </p>
           <HeroSearch companies={companies} experiences={experiences} />
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Your posts strip — only when the signed-in user has a pending post */}
+        {/* Your posts strip - only when the signed-in user has a pending post */}
         {pending && (
           <Link
             href="/under-review"
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
         <Section title="Latest across SST" href="/feed">
           <div className="flex flex-col gap-2">
             {experiences.map((e) => (
-              <FeedRow key={e.id} e={e} companyName={e.company ?? "—"} />
+              <FeedRow key={e.id} e={e} companyName={e.company ?? "-"} />
             ))}
           </div>
         </Section>

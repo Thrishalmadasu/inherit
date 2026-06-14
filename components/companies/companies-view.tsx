@@ -11,7 +11,7 @@ function latest(days: number) {
   if (days === 0) return "today";
   if (days === 1) return "1d ago";
   if (days < 30) return `${days}d ago`;
-  if (days > 365) return "—";
+  if (days > 365) return "-";
   return `${Math.round(days / 30)}mo ago`;
 }
 

@@ -1,4 +1,4 @@
-// Display helpers for the signed-in user — pure functions, safe on both
+// Display helpers for the signed-in user - pure functions, safe on both
 // server and client. SST emails encode the joining year:
 // "thrishal.23bcs10115@sst.scaler.com" → joined 2023 → batch of '27.
 
@@ -29,7 +29,7 @@ function nameParts(fullName?: string | null, email?: string | null): string[] {
   return name ? name.split(/\s+/).map((p) => p[0].toUpperCase() + p.slice(1)) : [];
 }
 
-// "Thrishal Madasu" → "Thrishal M." — the byline style used app-wide.
+// "Thrishal Madasu" → "Thrishal M." - the byline style used app-wide.
 // Falls back to the email's first name segment when Clerk has no name.
 export function shortName(fullName?: string | null, email?: string | null): string {
   const parts = nameParts(fullName, email);

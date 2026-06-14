@@ -1,7 +1,7 @@
 import { SignOutButton } from "@clerk/nextjs";
 import { Icon } from "@/components/icons";
 
-// Shown when a signed-in account is not @sst.scaler.com — the code-level
+// Shown when a signed-in account is not @sst.scaler.com - the code-level
 // backstop to the Clerk dashboard domain allowlist.
 export function RestrictedScreen({ email }: { email: string }) {
   return (
@@ -18,7 +18,7 @@ export function RestrictedScreen({ email }: { email: string }) {
         Google account to continue.
       </p>
       <p className="mb-7 text-[12.5px] text-fg-3">
-        Placement experiences stay inside the batch — permanently.
+        Placement experiences stay inside the batch - permanently.
       </p>
       <SignOutButton redirectUrl="/sign-in">
         <button

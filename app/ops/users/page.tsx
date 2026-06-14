@@ -5,7 +5,7 @@ import { UsersView } from "@/components/ops/users-view";
 export const dynamic = "force-dynamic";
 
 // Super-Admin user management. The page renders for any Ops user (so they can
-// see who holds what), but role changes are gated to super admins — the role
+// see who holds what), but role changes are gated to super admins - the role
 // <Select> is disabled otherwise and the Server Action re-checks regardless.
 export default async function OpsUsersPage(props: PageProps<"/ops/users">) {
   const sp = await props.searchParams;

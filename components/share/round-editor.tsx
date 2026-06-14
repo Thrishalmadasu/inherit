@@ -2,7 +2,7 @@
 
 // Step 2's round card: pipeline label + status (quick mode), and an expandable
 // detail panel COMPOSED from typed content blocks (coding / system design /
-// behavioral / open). Round type is a label only — any round can hold any mix
+// behavioral / open). Round type is a label only - any round can hold any mix
 // of block types (PRD locked decision).
 import { Icon } from "@/components/icons";
 import { TagInput } from "@/components/share/tag-input";
@@ -46,7 +46,7 @@ export function RoundEditor({
 }) {
   const set = (patch: Partial<DraftRound>) => onChange({ ...round, ...patch });
   // A non-canonical label (e.g. from an invite ?round= link, or legacy data)
-  // still needs to render as the selected option — but students can only ever
+  // still needs to render as the selected option - but students can only ever
   // pick canonical entries; Ops introduces new round types in /ops/taxonomy.
   const isKnown = roundTypes.includes(round.round);
 
@@ -167,7 +167,7 @@ export function RoundEditor({
         </span>
       </button>
 
-      {/* Detail body — typed content blocks */}
+      {/* Detail body - typed content blocks */}
       {round.detailed && (
         <div className="border-t border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.015),transparent)] px-3.5 pb-[18px] pt-4">
           <div className="mb-4 grid grid-cols-2 gap-3.5 max-md:grid-cols-1">

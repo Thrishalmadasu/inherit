@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-// Base shimmer block. Everything else composes this. aria-hidden — it's a
+// Base shimmer block. Everything else composes this. aria-hidden - it's a
 // visual placeholder, not content a screen reader should announce.
 export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cn("animate-pulse rounded bg-surface-3", className)} />;
@@ -30,7 +30,7 @@ export function SkeletonCard() {
   );
 }
 
-// A column of N SkeletonCards — the shape every list view loads into.
+// A column of N SkeletonCards - the shape every list view loads into.
 export function SkeletonCardList({ count = 5 }: { count?: number }) {
   return (
     <div className="flex flex-col gap-2.5">

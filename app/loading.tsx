@@ -8,7 +8,7 @@ export default function HomeLoading() {
     <>
       <TopNav showSearch={false} />
       <main className="mx-auto max-w-[1080px] px-7 pb-20 pt-7">
-        {/* Hero — static copy stays, search bar shimmers */}
+        {/* Hero - static copy stays, search bar shimmers */}
         <div className="py-10 text-center">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-fg-3">
             SST Placement Knowledge Base
@@ -17,7 +17,7 @@ export default function HomeLoading() {
             What are you prepping for <span className="text-blue">today?</span>
           </h1>
           <p className="mb-6 text-[15px] leading-[1.55] text-fg-2">
-            Every OA, interview, and offer your batchmates have been through —
+            Every OA, interview, and offer your batchmates have been through -
             searchable in one place.
           </p>
           <Skeleton className="mx-auto h-[52px] w-full max-w-[640px] rounded-xl" />

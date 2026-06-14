@@ -1,4 +1,4 @@
-// Shared post-content blocks — used by the experience detail page and the
+// Shared post-content blocks - used by the experience detail page and the
 // author's under-review preview (and later, the Ops queue full-post view).
 import { Icon } from "@/components/icons";
 import { Difficulty } from "@/components/ui/primitives";

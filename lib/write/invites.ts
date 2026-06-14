@@ -2,7 +2,7 @@
 // cores: explicit actor, Zod at the boundary, one db.batch() so the campaign
 // and its recipient rows land together or not at all.
 //
-// The client sends the RAW CSV text, not its parsed result — this core
+// The client sends the RAW CSV text, not its parsed result - this core
 // re-parses and re-validates server-side (the client is never trusted) and
 // returns the counts it recorded. NO dedupe (product decision 2026-06-13): every row with
 // a valid email sends, including duplicates and re-runs. Ops owns recipient
@@ -26,7 +26,7 @@ type Batchable = Parameters<typeof db.batch>[0][number];
 const fieldStr = z.string().max(200);
 // Recipients arrive as a raw CSV (re-parsed here) and/or a list of manually
 // entered rows (the add-recipient form). Both are re-validated server-side by
-// the SAME classifier — the client is never trusted. At least one source must
+// the SAME classifier - the client is never trusted. At least one source must
 // yield a recipient (checked after building, not in the schema).
 const sendInvitesInput = z.object({
   csv: z.string().max(2_000_000, "CSV is too large").default(""),
@@ -49,7 +49,7 @@ const sendInvitesInput = z.object({
 
 export interface SendInvitesResult {
   sent: number; // dispatched OK
-  failed: number; // dispatch failed after retries — re-send by re-uploading
+  failed: number; // dispatch failed after retries - re-send by re-uploading
   errors: number; // missing/invalid email, never dispatched
 }
 
@@ -58,7 +58,7 @@ export async function sendInvitesCore(actor: DbUser, input: unknown): Promise<Se
   if (!parsed.success) throw new WriteError(parsed.error.issues[0]?.message ?? "Invalid input");
   const { csv, manual, fileName, subject, body } = parsed.data;
 
-  // CSV rows first, then manually-entered rows — one combined recipient list
+  // CSV rows first, then manually-entered rows - one combined recipient list
   // flows through the identical dispatch + audit path.
   const recipients = [
     ...(csv.trim() ? buildRecipients(parseCsv(csv)) : []),
@@ -69,10 +69,10 @@ export async function sendInvitesCore(actor: DbUser, input: unknown): Promise<Se
   const ready = recipients.filter((r) => r.status === "ready");
   const errors = recipients.filter((r) => r.status === "error").length;
   if (!ready.length)
-    throw new WriteError("No valid recipients — every row was missing or had an invalid email");
+    throw new WriteError("No valid recipients - every row was missing or had an invalid email");
 
   // Explicit ids on every recipient row: duplicates are allowed now, so an
-  // email no longer identifies one row — we stamp dispatch results back by id.
+  // email no longer identifies one row - we stamp dispatch results back by id.
   const campaignId = crypto.randomUUID();
   const now = new Date();
   const rows = recipients.map((r) => ({
@@ -105,7 +105,7 @@ export async function sendInvitesCore(actor: DbUser, input: unknown): Promise<Se
     db.insert(s.inviteRecipients).values(rows),
   ]);
 
-  // Dispatch (Resend batch endpoint in prod, console stub without a key) —
+  // Dispatch (Resend batch endpoint in prod, console stub without a key) -
   // never throws; per-recipient results come back instead (PRD §12:
   // "InviteRecipient.status updated per row"). results aligns positionally
   // with `ready`, which aligns with `readyRows` (filter preserves order).
@@ -132,7 +132,7 @@ export async function sendInvitesCore(actor: DbUser, input: unknown): Promise<Se
         .set({ status: "sent", sentAt: new Date() })
         .where(inArray(s.inviteRecipients.id, okIds)),
     );
-  // Failed rows stay "failed" — no email went out, so re-uploading re-sends them.
+  // Failed rows stay "failed" - no email went out, so re-uploading re-sends them.
   if (failedIds.length)
     stamps.push(
       db

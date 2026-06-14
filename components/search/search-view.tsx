@@ -48,7 +48,7 @@ export function SearchView({
 
   const term = q.trim();
 
-  // Companies are few — filter client-side. Experiences are searched on the
+  // Companies are few - filter client-side. Experiences are searched on the
   // server (bounded + debounced) so /search never loads the whole corpus.
   useEffect(() => {
     const t = term.toLowerCase();
@@ -142,7 +142,7 @@ export function SearchView({
             <strong className="mb-1.5 block font-semibold text-fg">
               Start typing to search across SST
             </strong>
-            Find a company, a role, or a specific interview round — results appear
+            Find a company, a role, or a specific interview round - results appear
             from keystroke 1.
             <div className="mt-3.5 flex flex-wrap justify-center gap-2">
               <span className="mr-1 text-xs text-fg-3">Recent</span>
@@ -166,7 +166,7 @@ export function SearchView({
                 <strong className="mb-1.5 block font-semibold text-fg">
                   No results for &ldquo;{q}&rdquo;
                 </strong>
-                Try fewer keywords — or check your spelling.
+                Try fewer keywords - or check your spelling.
               </>
             )}
           </div>

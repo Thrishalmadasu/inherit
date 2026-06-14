@@ -1,10 +1,10 @@
-// Resend driver (PRD §12). Raw REST via fetch — two endpoints (single +
+// Resend driver (PRD §12). Raw REST via fetch - two endpoints (single +
 // batch send), so we skip the SDK dependency and its version churn entirely.
 // Plain-text emails on purpose: short transactional notes, low spam score;
 // a designed HTML template can land later without touching the seam.
 //
 // Requires RESEND_API_KEY, and the FROM_ADDRESS domain verified in Resend
-// (SPF/DKIM DNS records — PRD §12) or every send 403s.
+// (SPF/DKIM DNS records - PRD §12) or every send 403s.
 import {
   type DispatchResult,
   type EmailSender,
@@ -52,7 +52,7 @@ export const resendSender: EmailSender = {
 
   // Chunked through the batch endpoint (PRD §12: "bulk-send batched in
   // chunks within Resend's rate limits; failures retried server-side").
-  // A chunk that still fails after retries marks all ITS recipients failed —
+  // A chunk that still fails after retries marks all ITS recipients failed -
   // per-chunk granularity, recorded per row by the invites core.
   async sendInvites(emails: InviteEmail[]) {
     const results: DispatchResult[] = [];

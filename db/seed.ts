@@ -1,6 +1,6 @@
 // Seed: users, companies, the curated topic taxonomy, and the demo experiences
 // (mock questions split into typed content blocks). Run: npx tsx db/seed.ts
-// Wipes and re-seeds — dev-only by design.
+// Wipes and re-seeds - dev-only by design.
 process.loadEnvFile(".env.local");
 
 import { neon } from "@neondatabase/serverless";
@@ -79,17 +79,17 @@ const EXPERIENCES: ExpSeed[] = [
     helpful: 64,
     views: 980,
     overview:
-      "Full pipeline writeup: OA, two technical rounds, one behavioural, HR. Sharing the question themes and the LP stories I leaned on — happy to chat 1:1.",
+      "Full pipeline writeup: OA, two technical rounds, one behavioural, HR. Sharing the question themes and the LP stories I leaned on - happy to chat 1:1.",
     rounds: [
       {
         name: "OA",
         status: "Passed",
         platform: "HackerRank",
-        notes: "110 min — two coding + aptitude",
+        notes: "110 min - two coding + aptitude",
         blocks: [
           { type: "coding", prompt: "Sub-array sums over a threshold with a fixed window.", tags: ["Arrays & Strings", "Sliding Window"], difficulty: 3 },
           { type: "coding", prompt: "Frequency-map pairing question on transaction logs.", tags: ["Hash Maps"], difficulty: 3 },
-          { type: "open", prompt: "Quant aptitude — ratios, probability, time-and-work.", tags: ["Aptitude"] },
+          { type: "open", prompt: "Quant aptitude - ratios, probability, time-and-work.", tags: ["Aptitude"] },
         ],
       },
       {
@@ -126,7 +126,7 @@ const EXPERIENCES: ExpSeed[] = [
       },
     ],
     tips: [
-      { category: "strategy", text: "Keep 8 STAR stories ready — every behavioural follow-up mapped back to one of them." },
+      { category: "strategy", text: "Keep 8 STAR stories ready - every behavioural follow-up mapped back to one of them." },
       { category: "mindset", text: "The bar-raiser round feels adversarial by design. It's a stress test, not a verdict." },
     ],
   },
@@ -150,7 +150,7 @@ const EXPERIENCES: ExpSeed[] = [
         name: "OA",
         status: "Passed",
         platform: "HackerRank",
-        notes: "110 min — 90 coding + 20 aptitude/work-style",
+        notes: "110 min - 90 coding + 20 aptitude/work-style",
         blocks: [
           {
             type: "coding",
@@ -241,7 +241,7 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Failed",
         platform: "HackerRank",
         blocks: [
-          { type: "coding", prompt: "Interval DP — maximum score from merging adjacent intervals.", tags: ["Dynamic Programming"], difficulty: 4 },
+          { type: "coding", prompt: "Interval DP - maximum score from merging adjacent intervals.", tags: ["Dynamic Programming"], difficulty: 4 },
           { type: "coding", prompt: "String matching with at most one wildcard substitution.", tags: ["Arrays & Strings"], difficulty: 4 },
         ],
       },

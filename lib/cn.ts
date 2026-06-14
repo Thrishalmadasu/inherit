@@ -1,4 +1,4 @@
-// Minimal className joiner — filters falsy values and joins with spaces.
+// Minimal className joiner - filters falsy values and joins with spaces.
 // We control all class strings ourselves, so tailwind-merge isn't needed.
 export type ClassValue = string | number | false | null | undefined;
 

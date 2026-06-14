@@ -31,14 +31,14 @@ export function ExperienceView({
 }) {
   const [saved, setSavedState] = useState(viewer.saved);
   const [helpful, setHelpfulState] = useState(viewer.helpful);
-  // exp.helpful already includes the viewer's persisted vote — only the
+  // exp.helpful already includes the viewer's persisted vote - only the
   // optimistic delta vs. what the server knew at render time is added here.
   const helpfulCount =
     (exp.helpful ?? 0) + (helpful === viewer.helpful ? 0 : helpful ? 1 : -1);
 
   // Every page open counts one view. The ref de-dupes within a single mount
   // (React dev strict-mode runs effects twice); a reload or revisit is a new
-  // mount and counts again — that's the product intent.
+  // mount and counts again - that's the product intent.
   const viewSent = useRef<string | null>(null);
   useEffect(() => {
     if (viewSent.current === exp.id) return;
@@ -73,7 +73,7 @@ export function ExperienceView({
       await navigator.clipboard.writeText(window.location.href);
       toast("Link copied to clipboard");
     } catch {
-      toast("Couldn't copy — select the address bar to share");
+      toast("Couldn't copy - select the address bar to share");
     }
   };
 
@@ -214,13 +214,13 @@ export function ExperienceView({
             <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 text-[13px]">
               <KV k="Company" v={company.name} />
               <KV k="Role" v={exp.role} />
-              <KV k="Round" v={exp.round ?? "—"} />
+              <KV k="Round" v={exp.round ?? "-"} />
               <span className="text-fg-3">Outcome</span>
               <span className="text-right">
                 {exp.outcome && <OutcomePill outcome={exp.outcome} />}
               </span>
-              <KV k="Platform" v={exp.platform ?? "—"} />
-              <KV k="Duration" v={exp.duration ?? "—"} />
+              <KV k="Platform" v={exp.platform ?? "-"} />
+              <KV k="Duration" v={exp.duration ?? "-"} />
               <KV k="Year" v={String(exp.year)} />
               <span className="text-fg-3">Difficulty</span>
               <span className="text-right">
@@ -272,7 +272,7 @@ export function ExperienceView({
 
           <RailCard title="Have an experience to share?">
             <p className="mb-3 text-[13px] leading-[1.55] text-fg-2">
-              Your post helps the next batch prep faster — submissions usually go
+              Your post helps the next batch prep faster - submissions usually go
               live within 24 hours.
             </p>
             <Button href="/share" variant="primary" className="w-full justify-center">
@@ -366,7 +366,7 @@ function ModeratorHide({ expId }: { expId: string }) {
     }
     setOpen(false);
     setReason("");
-    toast("Post hidden — pulled from student-facing views (logged)");
+    toast("Post hidden - pulled from student-facing views (logged)");
     router.push("/feed");
   };
 
@@ -394,7 +394,7 @@ function ModeratorHide({ expId }: { expId: string }) {
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason (required) — e.g. a factual claim was disputed, identifying details, etc."
+          placeholder="Reason (required) - e.g. a factual claim was disputed, identifying details, etc."
           className="min-h-[100px] w-full resize-y rounded-md border border-border bg-bg-2 px-3 py-2.5 text-[13.5px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]"
         />
         <div className="mt-3.5 flex items-center justify-between gap-3">

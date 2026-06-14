@@ -23,7 +23,7 @@ export function PendingActions({ expId }: { expId: string }) {
       toast(result.error);
       return;
     }
-    toast("Withdrawn — find it on My Posts whenever you're ready");
+    toast("Withdrawn - find it on My Posts whenever you're ready");
     router.push("/me");
   };
 

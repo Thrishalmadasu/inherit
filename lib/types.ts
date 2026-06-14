@@ -1,4 +1,4 @@
-// Shared DTO types — the card/detail shapes the UI consumes.
+// Shared DTO types - the card/detail shapes the UI consumes.
 // Born in lib/mock/data.ts (Phase 0); promoted here per handbook §6 so the
 // types outlive the mock values. lib/db/queries.ts maps DB rows onto these;
 // client views consume them. Shapes are intentionally loose (single- vs
@@ -141,7 +141,7 @@ export interface OpsQueueItem {
   realAuthor: { name: string; batch: string; email: string };
   bylineAs: "real" | "anonymous";
   company: string;
-  // Set only when the named company isn't canonical yet — the moderator must
+  // Set only when the named company isn't canonical yet - the moderator must
   // resolve it (map to existing / promote) before this post can be approved.
   proposedCompany?: string | null;
   role: string;

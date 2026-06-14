@@ -1,6 +1,6 @@
 // DEV-ONLY impersonation switch (handbook §7). Hard 404 unless EVERY gate in
 // lib/auth.isDevBypassEnabled holds (explicit DEV_AUTH_BYPASS=1 opt-in from
-// gitignored .env.local + NODE_ENV=development + not on Vercel) — and the
+// gitignored .env.local + NODE_ENV=development + not on Vercel) - and the
 // cookie this sets is only honored behind those same gates.
 //
 //   /dev-login                               → picker (click a seeded user)
@@ -44,17 +44,17 @@ export async function GET(req: NextRequest) {
     .map(
       (r) =>
         `<li><a href="/dev-login?as=${encodeURIComponent(r.email)}">${r.name}</a>` +
-        ` — ${r.email} <code>${r.role}</code></li>`,
+        ` - ${r.email} <code>${r.role}</code></li>`,
     )
     .join("\n");
   return new NextResponse(
     `<!doctype html><html><head><title>Dev login</title></head>
 <body style="font:14px/1.6 system-ui;max-width:640px;margin:48px auto;color:#ddd;background:#0d121d">
-<h1 style="font-size:18px">Dev impersonation${as ? ` — <code>${as}</code> not found` : ""}</h1>
+<h1 style="font-size:18px">Dev impersonation${as ? ` - <code>${as}</code> not found` : ""}</h1>
 <p>Pick a seeded user (dev only; production always uses Clerk):</p>
 <ul>${items}</ul>
 <p><a href="/dev-login?off">Stop impersonating</a></p>
-<p style="color:#888">For real Clerk sign-in open <code>/sign-in</code> in a normal browser —
+<p style="color:#888">For real Clerk sign-in open <code>/sign-in</code> in a normal browser -
 inside the preview pane it dead-ends (Clerk dev instances redirect through
 clerk.accounts.dev, and the preview only allows localhost).</p>
 </body></html>`,

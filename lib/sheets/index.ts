@@ -1,5 +1,5 @@
 // The L&D sheet seam (roadmap #5, PRD §13). On publish, an experience's
-// Technical + Behavioral rows are appended to the L&D tracker sheet —
+// Technical + Behavioral rows are appended to the L&D tracker sheet -
 // asynchronously (fired via after() in the approve action, outside the
 // response), retried, and NEVER blocking or failing the publish itself.
 //
@@ -9,7 +9,7 @@
 //
 // Append-on-FIRST-publish only (PRD §13): experiences.sheet_synced_at is the
 // stamp. A re-approved edit does not append again (reconciliation of edited /
-// hidden posts is the deferred two-way sync). Server-only — imports the db.
+// hidden posts is the deferred two-way sync). Server-only - imports the db.
 import { eq, inArray } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import { appOrigin } from "@/lib/email";
@@ -114,10 +114,10 @@ export async function loadSheetExperience(expId: string): Promise<SheetExperienc
 const RETRY_BACKOFF_MS = [1_000, 4_000]; // 3 attempts total, within after()'s window
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// The fire-and-forget entry point — called from after() in the approve
+// The fire-and-forget entry point - called from after() in the approve
 // action and from the invariant test. Never throws: a sheet outage logs and
 // leaves sheet_synced_at NULL (the post stays published; PRD's durable
-// job-queue worker is deferred — see HANDBOOK §10 hardening).
+// job-queue worker is deferred - see HANDBOOK §10 hardening).
 export async function syncPublishedExperience(expId: string): Promise<void> {
   try {
     const [row] = await db
@@ -129,7 +129,7 @@ export async function syncPublishedExperience(expId: string): Promise<void> {
       })
       .from(s.experiences)
       .where(eq(s.experiences.id, expId));
-    // Only live posts, only once — re-checked here (not just at the call
+    // Only live posts, only once - re-checked here (not just at the call
     // site) because after() runs later than the approve that scheduled it.
     if (!row || row.reviewStatus !== "approved" || row.deletedAt || row.hiddenAt) return;
     if (row.sheetSyncedAt) return;

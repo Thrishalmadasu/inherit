@@ -1,4 +1,4 @@
-// Lightweight, library-free toast — appends a styled element to <body> and
+// Lightweight, library-free toast - appends a styled element to <body> and
 // animates it. Matches the prototype's behaviour. Client-only.
 export function toast(message: string, ms = 2400) {
   if (typeof document === "undefined") return;

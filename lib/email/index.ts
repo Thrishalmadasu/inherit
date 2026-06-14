@@ -1,12 +1,12 @@
 // The email seam (roadmap #5, PRD §12). Everything that sends mail goes
 // through EmailSender; the driver is picked from env at call time:
 // RESEND_API_KEY present → Resend, otherwise the console stub (logs every
-// dispatch, sends nothing). EMAIL_DRIVER=console|resend forces one — the
+// dispatch, sends nothing). EMAIL_DRIVER=console|resend forces one - the
 // invariant test pins `console` so it can never email real students.
 //
 // This module must stay CLIENT-SAFE: the Ops invite compose preview imports
 // the From constants. No db and no node: imports here or in the drivers.
-// (./resend ↔ here is a deliberate import cycle — bindings are only touched
+// (./resend ↔ here is a deliberate import cycle - bindings are only touched
 // inside function bodies, never at module init, so ESM resolves it cleanly.)
 import { resendSender } from "./resend";
 
@@ -15,7 +15,7 @@ export const FROM_NAME = "Placement Ops · SST Inherit";
 // Sender address. The subdomain is pending the Ops DNS decision (PRD §15 Q4),
 // so it's a NEXT_PUBLIC_ env override: locking it needs no code change, and
 // the client-side compose preview shows the address that will really be used.
-// (NEXT_PUBLIC_ vars are inlined at build time — changing it needs a deploy.)
+// (NEXT_PUBLIC_ vars are inlined at build time - changing it needs a deploy.)
 export const FROM_ADDRESS =
   process.env.NEXT_PUBLIC_EMAIL_FROM ?? "ops@inherit.sst.scaler.com";
 
@@ -41,10 +41,10 @@ export interface DispatchResult {
 }
 
 export interface EmailSender {
-  // Review-status email. Throws on failure — call via dispatchStatus, which
+  // Review-status email. Throws on failure - call via dispatchStatus, which
   // logs and swallows (the notifications row is the durable record).
   sendStatus(email: StatusEmail): Promise<void>;
-  // Outreach batch (Flow F). NEVER throws — returns per-recipient results so
+  // Outreach batch (Flow F). NEVER throws - returns per-recipient results so
   // the caller can stamp invite_recipients sent/failed row by row.
   sendInvites(emails: InviteEmail[]): Promise<DispatchResult[]>;
 }

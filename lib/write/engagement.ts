@@ -1,5 +1,5 @@
 // Write core for the engagement layer (roadmap #3): Helpful votes, saves,
-// unique view counts. Same shape as the other cores — explicit `actor`, no
+// unique view counts. Same shape as the other cores - explicit `actor`, no
 // "use server", reachable only via app/actions/* and the verify script.
 //
 // The cached counters (helpful_count / view_count) move in the SAME SQL
@@ -13,7 +13,7 @@ import { db, schema as s } from "@/lib/db";
 import type { DbUser } from "@/lib/auth";
 import { WriteError } from "@/lib/write/experiences";
 
-// Engagement only applies to live posts — same condition as `visibleExp`.
+// Engagement only applies to live posts - same condition as `visibleExp`.
 async function requireVisible(expId: string): Promise<void> {
   const [row] = await db
     .select({
@@ -73,10 +73,10 @@ export async function setSavedCore(actor: DbUser, expId: string, on: boolean): P
   }
 }
 
-// Every detail-page open counts (product decision 2026-06-12 — total opens,
+// Every detail-page open counts (product decision 2026-06-12 - total opens,
 // not unique viewers; reloads and revisits included). Still server-side and
 // only fired from the page mount, so router prefetch can't inflate it.
-// Callers treat this as fire-and-forget — a non-visible post is a no-op.
+// Callers treat this as fire-and-forget - a non-visible post is a no-op.
 export async function recordViewCore(_actor: DbUser, expId: string): Promise<void> {
   await db.execute(sql`
     update experiences

@@ -1,5 +1,5 @@
 // Review-status email content (PRD §7 Flow D): pure facts → {subject, body}.
-// One template per author-facing review transition — the same four states the
+// One template per author-facing review transition - the same four states the
 // notifications table records. Hide/unhide deliberately have no email (PRD
 // §12 lists exactly these four); the in-app notification row still lands.
 import { appOrigin } from "./index";
@@ -14,7 +14,7 @@ export interface StatusFacts {
   note?: string; // reviewer note (needs_edits) or reason (rejected)
 }
 
-const signOff = "— Placement Ops · Inherit";
+const signOff = "- Placement Ops · Inherit";
 const first = (name: string) => name.split(" ")[0] || "there";
 
 export function statusEmailContent(
@@ -25,10 +25,10 @@ export function statusEmailContent(
   switch (kind) {
     case "under_review":
       return {
-        subject: `Got it — your ${f.company} experience is in the review queue`,
+        subject: `Got it - your ${f.company} experience is in the review queue`,
         body: `Hi ${first(f.authorName)},
 
-Thanks for sharing your ${f.company} (${f.role}) experience. It's in the review queue — every post is checked against the published rubric before it goes live, in submission order.
+Thanks for sharing your ${f.company} (${f.role}) experience. It's in the review queue - every post is checked against the published rubric before it goes live, in submission order.
 
 Track it here: ${origin}/under-review
 

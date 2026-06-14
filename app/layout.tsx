@@ -13,13 +13,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SST Inherit — Placement Intelligence",
+  title: "SST Inherit - Placement Intelligence",
   description:
     "What current students leave behind for the batches that follow. Every OA, interview, and offer your batchmates have been through, searchable in one place.",
 };
 
 // Clerk components themed to the app's design tokens (globals.css @theme).
-// Direct values, not var() — Clerk derives shades via color-mix at runtime.
+// Direct values, not var() - Clerk derives shades via color-mix at runtime.
 const clerkAppearance = {
   variables: {
     colorPrimary: "#2ea0f8",
@@ -41,6 +41,15 @@ const clerkAppearance = {
     borderRadius: "10px",
     fontFamily: "var(--font-inter), ui-sans-serif, system-ui, sans-serif",
   },
+  elements: {
+    // The social button rendered borderless on the dark card; give it a visible
+    // outline (important: beats Clerk's own rule).
+    socialButtonsBlockButton:
+      "border! border-[rgba(255,255,255,0.16)]! hover:border-[rgba(255,255,255,0.3)]! hover:bg-[#151c2a]!",
+    // Hide "Already have an account? Sign in" / "Don't have an account? Sign up":
+    // sign-in and sign-up are the same Google-only flow, so the switch is a no-op.
+    footerAction: "hidden!",
+  },
 };
 
 export default async function RootLayout({
@@ -50,7 +59,7 @@ export default async function RootLayout({
 }>) {
   // Domain gate + first-sign-in mirror into our `users` table (handbook §3).
   const gate = await ensureDbUser();
-  // Dev impersonation (§7): skip ClerkProvider entirely — clerk-js on a DEV
+  // Dev impersonation (§7): skip ClerkProvider entirely - clerk-js on a DEV
   // instance does a top-level handshake redirect through *.clerk.accounts.dev
   // on EVERY page load, which localhost-only preview browsers can't follow.
   // Nothing under impersonation consumes Clerk (identity comes from Viewer).
@@ -60,7 +69,7 @@ export default async function RootLayout({
     <html lang="en" className={`${inter.variable} h-full`}>
       {/* suppressHydrationWarning: browser extensions (e.g. Bitdefender's
           `bis_register`) inject attributes into <body> before React hydrates.
-          This tolerates those attribute-only diffs on <body> only — it does
+          This tolerates those attribute-only diffs on <body> only - it does
           NOT hide real hydration mismatches deeper in the tree. */}
       <body className="min-h-full antialiased" suppressHydrationWarning>
         {devImpersonation ? (

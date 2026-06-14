@@ -1,8 +1,8 @@
 // Write core for submit / edit-resubmit (PRD §7 Flows B & C).
-// Pure server module — NO "use server" here: these take an explicit `actor`
+// Pure server module - NO "use server" here: these take an explicit `actor`
 // and are only reachable through the auth-gated wrappers in app/actions/*
 // (and the invariant test script). Everything DB-mutating goes through ONE
-// db.batch() — Neon runs a batch as a single non-interactive transaction, so
+// db.batch() - Neon runs a batch as a single non-interactive transaction, so
 // a half-inserted experience can never exist.
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -24,7 +24,7 @@ type Batchable = Parameters<typeof db.batch>[0][number];
 export class WriteError extends Error {} // safe to surface to the client
 
 // Curated-taxonomy contract: every submitted label must resolve to an ACTIVE
-// topic_tags row. Unknown labels are a bug or tampering — reject loudly.
+// topic_tags row. Unknown labels are a bug or tampering - reject loudly.
 async function resolveTagIds(payload: SharePayload): Promise<Map<string, string>> {
   const labels = [...new Set(payload.rounds.flatMap((r) => r.blocks.flatMap((b) => b.topics)))];
   if (labels.length === 0) return new Map();
@@ -40,7 +40,7 @@ async function resolveTagIds(payload: SharePayload): Promise<Map<string, string>
 
 // Canonical-round contract (concern #10): every round label must be an ACTIVE
 // round_types row. Students SELECT from the DB list, so an unknown label here
-// is tampering or a stale client — reject loudly. `rounds.name` then stores the
+// is tampering or a stale client - reject loudly. `rounds.name` then stores the
 // canonical label verbatim (kept in sync by the rename core in taxonomy.ts).
 async function assertRoundTypes(payload: SharePayload): Promise<void> {
   const labels = [...new Set(payload.rounds.map((r) => r.round))];
@@ -56,7 +56,7 @@ async function assertRoundTypes(payload: SharePayload): Promise<void> {
 
 // Companies are NO LONGER auto-created (concern #10). Match case-insensitively
 // against the canonical list (name or alias); on a hit the experience binds to
-// that companyId. On a miss the typed name rides along as a PROPOSED name —
+// that companyId. On a miss the typed name rides along as a PROPOSED name -
 // companyId stays NULL until a moderator resolves it during review (map to an
 // existing company = dedup, or promote to canonical). Ops is the single gate.
 type CompanyBinding = { companyId: string | null; proposedName: string | null };
@@ -135,7 +135,7 @@ const queueNotification = (userId: string, expId: string, payload: SharePayload)
     payload: { company: payload.company, role: payload.role },
   });
 
-// "It's in the queue" confirmation email (Flow D) — after the batch commits,
+// "It's in the queue" confirmation email (Flow D) - after the batch commits,
 // best-effort (dispatchStatus never throws). The actor IS the author here.
 const emailQueued = (actor: DbUser, expId: string, payload: SharePayload) =>
   dispatchStatus({
@@ -184,7 +184,7 @@ export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): 
 
 // ── Flow C: edit → resubmit (re-review on every edit, PRD §10) ───────────────
 // Replaces the content wholesale (no version history in V1), resets review
-// state, clears any Ops hide (it referred to the prior live version — the
+// state, clears any Ops hide (it referred to the prior live version - the
 // audit stays in moderation_actions), and re-stamps created_at: the queue is
 // FIFO by created_at, so this IS "the back of the queue". An approved post
 // drops out of visibleExp the moment status leaves `approved`.
@@ -228,7 +228,7 @@ export async function resubmitExperienceCore(
         hiddenBy: null,
         hiddenReason: null,
         publishedAt: null,
-        createdAt: now, // queue-entry time — back of the FIFO
+        createdAt: now, // queue-entry time - back of the FIFO
         updatedAt: now,
       })
       .where(eq(s.experiences.id, expId)),

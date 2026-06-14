@@ -14,7 +14,7 @@ const ITEM =
 export function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // Server-resolved identity DTO (lib/viewer) — not Clerk's useUser(), so the
+  // Server-resolved identity DTO (lib/viewer) - not Clerk's useUser(), so the
   // byline renders identically under real sessions and dev impersonation.
   const viewer = useViewer();
 
@@ -103,7 +103,7 @@ export function UserMenu() {
   );
 }
 
-// Separate component so useClerk() is only called when ClerkProvider exists —
+// Separate component so useClerk() is only called when ClerkProvider exists -
 // under dev impersonation the layout doesn't mount Clerk at all (§7).
 function ClerkSignOutButton() {
   const { signOut } = useClerk();

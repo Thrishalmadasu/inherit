@@ -3,7 +3,7 @@
 // per action so the status change, the audit row, and the author notification
 // land together or not at all.
 //
-// Reason discipline: suggest-edits, reject, and hide all REQUIRE a reason —
+// Reason discipline: suggest-edits, reject, and hide all REQUIRE a reason -
 // there is no silent moderation. Hide/unhide additionally append to
 // moderation_actions (the permanent answer to "who did this and why").
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -26,7 +26,7 @@ type ExpRow = typeof s.experiences.$inferSelect & {
 async function loadExp(expId: string): Promise<ExpRow> {
   // Author + company ride along: every transition emails the author about
   // their "<company> post" (Flow D), so the facts come from one read. The
-  // company join is LEFT — a post with a not-yet-resolved proposed company has
+  // company join is LEFT - a post with a not-yet-resolved proposed company has
   // companyId NULL but must still load (the moderator resolves it here).
   const [row] = await db
     .select({
@@ -44,11 +44,11 @@ async function loadExp(expId: string): Promise<ExpRow> {
     ...row.exp,
     authorEmail: row.authorEmail,
     authorName: row.authorName,
-    companyName: row.companyName ?? row.exp.proposedCompanyName ?? "—",
+    companyName: row.companyName ?? row.exp.proposedCompanyName ?? "-",
   };
 }
 
-// Review-status email (PRD §7 Flow D) — AFTER the batch commits, best-effort:
+// Review-status email (PRD §7 Flow D) - AFTER the batch commits, best-effort:
 // the notifications row is the durable record, the email is the nudge.
 const emailAuthor = (exp: ExpRow, kind: StatusKind, note?: string) =>
   dispatchStatus({
@@ -148,10 +148,10 @@ export async function rejectCore(actor: DbUser, expId: string, reason: string): 
 }
 
 // ── Hide / Unhide a LIVE post (PRD §10) ──────────────────────────────────────
-// No email on hide/unhide — PRD §12 scopes review-status emails to the four
+// No email on hide/unhide - PRD §12 scopes review-status emails to the four
 // review transitions; the in-app notification row still records it.
 export async function hideCore(actor: DbUser, expId: string, reason: string): Promise<void> {
-  if (!reason.trim()) throw new WriteError("A hide reason is required — no silent hides");
+  if (!reason.trim()) throw new WriteError("A hide reason is required - no silent hides");
   const exp = await loadExp(expId);
   if (exp.reviewStatus !== "approved" || exp.deletedAt)
     throw new WriteError("Only live, approved posts can be hidden");
@@ -190,7 +190,7 @@ export async function unhideCore(actor: DbUser, expId: string): Promise<void> {
       action: "unhide",
       reason: null,
     }),
-    // back live immediately (it was already approved) — tell the author
+    // back live immediately (it was already approved) - tell the author
     notify(exp, "post_live"),
   ]);
 }
@@ -198,10 +198,10 @@ export async function unhideCore(actor: DbUser, expId: string): Promise<void> {
 // ── Resolve a proposed company during review (concern #10) ───────────────────
 // The student named a company that wasn't canonical; it rode along as a
 // proposed name. The moderator now either MAPS it to an existing canonical
-// company (dedup — and the proposed spelling is folded in as an alias so the
+// company (dedup - and the proposed spelling is folded in as an alias so the
 // next student who types it auto-binds) or PROMOTES it to a brand-new canonical
 // company. Either way companyId gets set and proposedCompanyName is cleared, so
-// approval can proceed. This is the single gate — companies are never created
+// approval can proceed. This is the single gate - companies are never created
 // speculatively. Idempotent-ish: only acts while the post is still proposed.
 export type CompanyResolution =
   | { existingCompanyId: string }
@@ -236,7 +236,7 @@ export async function resolveExperienceCompanyCore(
       .where(eq(s.companies.id, resolution.existingCompanyId));
     if (!target) throw new WriteError("Company not found");
     // Fold the proposed spelling in as an alias so future submissions auto-bind
-    // (dedup at the root — no second row ever appears for this variant).
+    // (dedup at the root - no second row ever appears for this variant).
     const variant = proposed.toLowerCase();
     const known = new Set([target.name.toLowerCase(), ...target.aliases.map((a) => a.toLowerCase())]);
     const stmts: Batchable[] = [

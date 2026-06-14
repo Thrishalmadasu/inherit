@@ -9,7 +9,7 @@ import type {
 } from "@/lib/draft";
 
 // Companies and round types are now sourced from the canonical DB tables
-// (concern #10), passed into the share form as props — there is no static
+// (concern #10), passed into the share form as props - there is no static
 // company/round list to drift. `ShareFormOptions` is the server→form contract.
 export interface ShareFormOptions {
   companies: { name: string; industry: string }[];
@@ -142,7 +142,7 @@ export const BLOCK_TYPE_META: Record<
     promptLabel: "Scenario / prompt",
     promptPlaceholder: "e.g. Design a rate limiter for a public API…",
     detailLabel: "Considerations / notes (optional)",
-    detailPlaceholder: "What they probed on — trade-offs, scale numbers, follow-ups…",
+    detailPlaceholder: "What they probed on - trade-offs, scale numbers, follow-ups…",
     hasDifficulty: true,
   },
   behavioral: {

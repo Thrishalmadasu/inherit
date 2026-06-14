@@ -180,7 +180,7 @@ export function UsersView({
         )}
         <p className="mt-3 text-[12.5px] leading-[1.55] text-fg-3">
           Only super admins can change roles. Every change is written to the audit
-          trail — who changed whom, when, and the prior role.
+          trail - who changed whom, when, and the prior role.
         </p>
       </div>
     </>

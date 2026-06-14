@@ -364,7 +364,7 @@ npx vercel deploy --prod --yes   # deploy
   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_test_…` for now) |
   | `CLERK_SECRET_KEY` | Clerk backend key (`sk_test_…` for now) |
   | `OPS_EMAILS` | comma-separated `/ops` ACCESS bootstrap — OR-gate alongside DB roles (moderator/super_admin); keeps moderation reachable if the roles table is misconfigured |
-  | `SUPER_ADMIN_EMAILS` | comma-separated bootstrap for the SUPER-ADMIN power (granting roles in `/ops/users`). **Required in prod** until a `super_admin` row exists, else nobody can assign roles. Keep to the 1–2 role owners; distinct from `OPS_EMAILS` so a student-moderator never gains role-management power |
+  | `SUPER_ADMIN_EMAILS` | comma-separated bootstrap for the SUPER-ADMIN power (granting roles in `/ops/users`). **Required in prod** until a `super_admin` row exists, else nobody can assign roles. `ensureDbUser` writes it THROUGH to the DB on sign-in (self-healing — the listed user becomes `super_admin` in the table + audit), so once they've signed in the var is redundant and removable. Keep to the 1–2 role owners; distinct from `OPS_EMAILS` so a student-moderator never gains role-management power |
   | `DEV_AUTH_BYPASS` | `1` enables dev impersonation (§7) — **`.env.local` ONLY, never Vercel** |
   | `RESEND_API_KEY` | flips `lib/email` from console stub → Resend (real sends!). Needs the From domain verified in Resend (SPF/DKIM DNS) first |
   | `NEXT_PUBLIC_EMAIL_FROM` | sender address once Ops locks the subdomain (PRD §15 Q4); defaults to `ops@inherit.sst.scaler.com`. Build-time inlined → redeploy to change |
@@ -465,7 +465,9 @@ npx vercel deploy --prod --yes   # deploy
      demote (`app/actions/roles.ts` → `lib/write/roles.ts`, gated by
      `requireSuperAdmin`), last-super-admin lockout guard, and a real
      `role_change_audit` trail (`listRecentRoleChanges`). Bootstrap via
-     `SUPER_ADMIN_EMAILS` (§9). Verified by 10 new harness assertions.
+     `SUPER_ADMIN_EMAILS` (§9), which `ensureDbUser` writes THROUGH to the DB on
+     sign-in (self-healing — DB stays the single source of truth, env removable
+     after first sign-in). Verified by 10 new harness assertions.
    - **Still TODO from this triage (priority order):** (a) **Tier-3 pagination** —
      `listFeed` (feed + search) is still unbounded; needs keyset pagination + UI,
      plus the same for the Ops queue/published tables; (b) close the Ops-nav KNOWN

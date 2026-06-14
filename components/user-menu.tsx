@@ -82,9 +82,6 @@ export function UserMenu() {
           <Link href="/me" className={cn(ITEM, "text-fg hover:bg-bg-2 [&_svg]:text-fg-3 hover:[&_svg]:text-fg")}>
             <Icon.bookmark /> My posts
           </Link>
-          <Link href="#" className={cn(ITEM, "text-fg hover:bg-bg-2 [&_svg]:text-fg-3 hover:[&_svg]:text-fg")}>
-            <Icon.user /> Account settings
-          </Link>
           {isOps && (
             <>
               <div className="mx-1 my-1.5 h-px bg-border" />

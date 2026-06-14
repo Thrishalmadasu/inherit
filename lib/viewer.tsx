@@ -11,6 +11,9 @@ export interface Viewer {
   name: string;
   email: string;
   isOps: boolean;
+  /** Google/Clerk profile photo URL; null when the account has no real image
+   * (we fall back to the initials chip). */
+  imageUrl: string | null;
   /** true only under dev impersonation - flips sign-out to /dev-login?off */
   dev: boolean;
 }

@@ -107,7 +107,7 @@ export async function ensureDbUser(): Promise<AuthGate> {
       return {
         status: "ok",
         email: row.sstEmail,
-        viewer: { name: row.name, email: row.sstEmail, isOps: isOpsUser(row), dev: true },
+        viewer: { name: row.name, email: row.sstEmail, isOps: isOpsUser(row), imageUrl: null, dev: true },
       };
     return { status: "signed-out" }; // stale cookie (e.g. after a reseed)
   }
@@ -155,7 +155,15 @@ export async function ensureDbUser(): Promise<AuthGate> {
     row = { ...row, role: "super_admin" };
   }
 
-  const viewer: Viewer = { name, email, isOps: isOpsUser(row) || wantsSuper, dev: false };
+  const viewer: Viewer = {
+    name,
+    email,
+    isOps: isOpsUser(row) || wantsSuper,
+    // Google photo via Clerk; hasImage is false for accounts with no real
+    // picture, so we keep the initials chip instead of Clerk's default avatar.
+    imageUrl: user.hasImage ? user.imageUrl : null,
+    dev: false,
+  };
 
   // Stamp the DB id into Clerk metadata once for cheap identity resolution
   // elsewhere; skip the slow Clerk write when it's already correct.

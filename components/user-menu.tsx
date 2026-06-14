@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useClerk } from "@clerk/nextjs";
 import { Icon } from "@/components/icons";
@@ -45,9 +46,19 @@ export function UserMenu() {
           open ? "border-border-hover bg-surface-3" : "border-border hover:border-border-hover hover:bg-surface-3",
         )}
       >
-        <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-blue to-blue-deep text-xs font-semibold text-white">
-          {initialsOf(viewer.name, email)}
-        </span>
+        {viewer.imageUrl ? (
+          <Image
+            src={viewer.imageUrl}
+            alt=""
+            width={28}
+            height={28}
+            className="size-7 rounded-full object-cover"
+          />
+        ) : (
+          <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-blue to-blue-deep text-xs font-semibold text-white">
+            {initialsOf(viewer.name, email)}
+          </span>
+        )}
         <span className="flex flex-col leading-[1.15]">
           <span className="text-[12.5px] font-medium">{name}</span>
           <span className="whitespace-nowrap text-[10.5px] tracking-[0.02em] text-fg-3">

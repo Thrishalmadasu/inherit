@@ -53,7 +53,7 @@ export interface EmailSender {
 // locally fall back to the live site (links in stub logs should be clickable).
 export function appOrigin(): string {
   const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  return prod ? `https://${prod}` : "https://inherit-three.vercel.app";
+  return prod ? `https://${prod}` : "https://sst-inherit.vercel.app";
 }
 
 // Text rendering of an invite: the merge-applied body, then the CTA link

@@ -11,7 +11,8 @@
 where students share structured placement experiences (OAs, interviews, offers) so the
 next person interviewing at a company walks in with the batch's collective intelligence.
 
-- **Live:** https://inherit-three.vercel.app
+- **Live:** https://sst-inherit.vercel.app (added 2026-06-14 as a project production domain;
+  the old `inherit-three.vercel.app` alias still resolves to the same deployments)
 - **PRD:** `../PRD-SST-Placement-Intelligence.md` (repo root) — the product contract
 - **Design source of truth:** `../Inherit Rough Design/` (prototype JSX + screenshots)
 - **Build plan / decisions log:** kept in the build session plan; key decisions repeated here
@@ -578,7 +579,7 @@ npx vercel deploy --prod --yes   # deploy
 - Local dev port is auto-assigned because Docker
   squats on 3000.
 - The `…-thrishal-madasus-projects.vercel.app` URLs 401 by design (Vercel deployment
-  protection); the public URL is `inherit-three.vercel.app`.
+  protection); the public URL is `sst-inherit.vercel.app` (also `inherit-three.vercel.app`).
 - `db/seed.ts` **wipes the database**. Fine now; add a guard before real user data exists.
 - The share form never captures `experiences.overview` (it's a seed/detail-page field);
   new submissions render the detail page without the Overview lead, and edits preserve

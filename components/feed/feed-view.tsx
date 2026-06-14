@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { TopNav } from "@/components/top-nav";
 import { Chip } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/select";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { avgDifficultyOf, type Experience } from "@/lib/types";
+import { fetchFeedPage } from "@/app/actions/feed";
+import type { FeedPage, FeedSort } from "@/lib/db/queries";
+import { cn } from "@/lib/cn";
+import { toast } from "@/lib/toast";
+import type { Experience } from "@/lib/types";
 
 const ROUND_FILTERS = [
   { id: "all", label: "All rounds" },
@@ -23,28 +27,56 @@ const OUTCOME_FILTERS = [
   { id: "Rejected", label: "Rejected" },
 ];
 
-export function FeedView({ items }: { items: Experience[] }) {
+export function FeedView({ initial }: { initial: FeedPage }) {
   const [round, setRound] = useState("all");
   const [outcome, setOutcome] = useState("all");
-  const [sort, setSort] = useState("latest");
+  const [sort, setSort] = useState<FeedSort>("latest");
 
-  const list = useMemo(() => {
-    let l = items.slice();
-    if (round !== "all") {
-      l = l.filter((item) => {
-        const rs = item.rounds ? item.rounds.map((r) => r.round) : [item.round];
-        if (round === "Tech") return rs.some((r) => r && r.startsWith("Tech"));
-        return rs.includes(round);
-      });
+  const [list, setList] = useState<Experience[]>(initial.items);
+  const [total, setTotal] = useState(initial.total);
+  const [page, setPage] = useState(initial.page);
+  const [hasMore, setHasMore] = useState(initial.hasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refetching, startRefetch] = useTransition();
+
+  // Ignore out-of-order responses when filters change rapidly.
+  const reqId = useRef(0);
+  const didMount = useRef(false);
+
+  // Re-query page 1 from the server whenever a filter/sort changes (skip the
+  // initial render — the server already provided page 1).
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
     }
-    if (outcome !== "all")
-      l = l.filter((i) => (i.overallOutcome || i.outcome) === outcome);
-    if (sort === "helpful") l = l.sort((a, b) => (b.helpful || 0) - (a.helpful || 0));
-    else if (sort === "views") l = l.sort((a, b) => (b.views || 0) - (a.views || 0));
-    else if (sort === "difficulty")
-      l = l.sort((a, b) => avgDifficultyOf(b) - avgDifficultyOf(a));
-    return l;
-  }, [items, round, outcome, sort]);
+    const id = ++reqId.current;
+    startRefetch(async () => {
+      const res = await fetchFeedPage({ round, outcome, sort, page: 1 });
+      if (id !== reqId.current) return; // a newer request superseded this one
+      setList(res.items);
+      setTotal(res.total);
+      setPage(res.page);
+      setHasMore(res.hasMore);
+    });
+  }, [round, outcome, sort]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    const id = ++reqId.current;
+    try {
+      const res = await fetchFeedPage({ round, outcome, sort, page: page + 1 });
+      if (id !== reqId.current) return;
+      setList((prev) => [...prev, ...res.items]);
+      setTotal(res.total);
+      setPage(res.page);
+      setHasMore(res.hasMore);
+    } catch {
+      toast("Couldn't load more — please try again");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const activeFilters = (round !== "all" ? 1 : 0) + (outcome !== "all" ? 1 : 0);
 
@@ -76,7 +108,7 @@ export function FeedView({ items }: { items: Experience[] }) {
 
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
           <span className="inline-flex items-center gap-3 text-sm font-medium text-fg">
-            {list.length} {list.length === 1 ? "experience" : "experiences"}
+            {total} {total === 1 ? "experience" : "experiences"}
             {activeFilters > 0 && (
               <button
                 onClick={() => {
@@ -91,7 +123,11 @@ export function FeedView({ items }: { items: Experience[] }) {
           </span>
           <div className="inline-flex items-center gap-2.5 text-[13px] font-medium text-fg-3">
             Sort
-            <Select variant="sort" value={sort} onChange={(e) => setSort(e.target.value)}>
+            <Select
+              variant="sort"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as FeedSort)}
+            >
               <option value="latest">Latest first</option>
               <option value="helpful">Most helpful</option>
               <option value="views">Most viewed</option>
@@ -100,18 +136,31 @@ export function FeedView({ items }: { items: Experience[] }) {
           </div>
         </div>
 
-        {list.length === 0 ? (
+        {total === 0 ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
             <strong className="mb-1.5 block font-semibold text-fg">
               No experiences match these filters.
             </strong>
-            Try clearing one — there are {items.length} experiences in total.
+            Try clearing a filter to see more.
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className={cn("flex flex-col gap-2.5", refetching && "opacity-60")}>
             {list.map((e) => (
               <ExperienceCard key={e.id} e={e} showCompany />
             ))}
+          </div>
+        )}
+
+        {hasMore && total > 0 && (
+          <div className="mt-5 flex justify-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore || refetching}
+              className="h-9 rounded-md border border-border bg-surface px-5 text-[13px] font-medium text-fg-2 hover:bg-surface-3 disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : `Load more (${list.length} of ${total})`}
+            </button>
           </div>
         )}
       </main>

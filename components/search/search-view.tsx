@@ -6,6 +6,7 @@ import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
+import { searchExperiences } from "@/app/actions/search";
 import { cn } from "@/lib/cn";
 import type { CompanyListItem, Experience } from "@/lib/types";
 
@@ -30,37 +31,55 @@ function highlight(text: string, q: string): ReactNode {
 export function SearchView({
   initialQ,
   companies,
-  experiences,
 }: {
   initialQ: string;
   companies: CompanyListItem[];
-  experiences: Experience[];
 }) {
   const [q, setQ] = useState(initialQ);
   const [tab, setTab] = useState<"all" | "companies" | "experiences">("all");
+  const [experiences, setExperiences] = useState<Experience[]>([]);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const reqId = useRef(0);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  const term = q.trim();
+
+  // Companies are few — filter client-side. Experiences are searched on the
+  // server (bounded + debounced) so /search never loads the whole corpus.
+  useEffect(() => {
+    const t = term.toLowerCase();
+    if (!t) {
+      setExperiences([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const id = ++reqId.current;
+    const handle = setTimeout(async () => {
+      try {
+        const res = await searchExperiences(t);
+        if (id === reqId.current) setExperiences(res);
+      } finally {
+        if (id === reqId.current) setLoading(false);
+      }
+    }, 220);
+    return () => clearTimeout(handle);
+  }, [term]);
+
   const results = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return { companies: [], experiences: [] };
+    const t = term.toLowerCase();
+    if (!t) return { companies: [] as CompanyListItem[], experiences: [] as Experience[] };
     return {
       companies: companies.filter(
         (c) => c.name.toLowerCase().includes(t) || c.industry.toLowerCase().includes(t),
       ),
-      experiences: experiences.filter(
-        (e) =>
-          (e.role && e.role.toLowerCase().includes(t)) ||
-          (e.company ?? "").toLowerCase().includes(t) ||
-          (e.rounds ?? [{ round: e.round }]).some((r) =>
-            (r.round ?? "").toLowerCase().includes(t),
-          ),
-      ),
+      experiences,
     };
-  }, [q, companies, experiences]);
+  }, [term, companies, experiences]);
 
   const totals = {
     all: results.companies.length + results.experiences.length,
@@ -68,7 +87,6 @@ export function SearchView({
     experiences: results.experiences.length,
   };
   const show = (kind: "companies" | "experiences") => tab === "all" || tab === kind;
-  const term = q.trim();
 
   return (
     <>
@@ -141,10 +159,16 @@ export function SearchView({
           </div>
         ) : totals.all === 0 ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-[60px] text-center text-fg-3">
-            <strong className="mb-1.5 block font-semibold text-fg">
-              No results for &ldquo;{q}&rdquo;
-            </strong>
-            Try fewer keywords — or check your spelling.
+            {loading ? (
+              <strong className="block font-semibold text-fg">Searching…</strong>
+            ) : (
+              <>
+                <strong className="mb-1.5 block font-semibold text-fg">
+                  No results for &ldquo;{q}&rdquo;
+                </strong>
+                Try fewer keywords — or check your spelling.
+              </>
+            )}
           </div>
         ) : (
           <>

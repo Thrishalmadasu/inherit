@@ -105,40 +105,27 @@ export async function ensureDbUser(): Promise<AuthGate> {
   // Backstop to the Clerk dashboard domain allowlist — never trust one layer.
   if (!email.endsWith(`@${SST_DOMAIN}`)) return { status: "wrong-domain", email };
 
-  // A super-admin email is also an Ops user (so the nav link shows).
   const wantsSuper = isSuperAdminEmail(email);
-  // Display name mirrors what the client previously read from useUser():
-  // the Google profile name, cleaned — NOT a per-request DB lookup, so the
-  // metadata fast-path below stays a fast path.
-  const viewer: Viewer = {
-    name: cleanPersonName(user.fullName) || shortFromEmail(email),
-    email,
-    isOps: isOpsEmail(email) || wantsSuper,
-    dev: false,
-  };
-  const meta = user.publicMetadata as { dbUserId?: string; isOps?: boolean; isSuper?: boolean };
-  const isOps = viewer.isOps;
-  if (meta.dbUserId && meta.isOps === isOps && meta.isSuper === wantsSuper)
-    return { status: "ok", email, viewer };
+  const name = cleanPersonName(user.fullName) || shortFromEmail(email);
 
-  // Name is written on first insert only — our `users` table is the system of
-  // record, and Google profile names are unreliable ("THRISHAL ."). Existing
-  // rows (seeded or Ops-curated) keep their name.
-  const [inserted] = await db
-    .insert(s.users)
-    .values({ sstEmail: email, name: viewer.name, batchYear: batchYearFromEmail(email) })
-    .onConflictDoNothing({ target: s.users.sstEmail })
-    .returning({ id: s.users.id, role: s.users.role });
-  const row =
-    inserted ??
-    (await db
-      .select({ id: s.users.id, role: s.users.role })
-      .from(s.users)
-      .where(eq(s.users.sstEmail, email)))[0];
+  // Resolve our row (system of record) every request — one cheap indexed
+  // lookup — so viewer.isOps can reflect the DB ROLE: a moderator promoted
+  // purely via /ops/users gets the Ops nav link without being in OPS_EMAILS.
+  // The expensive op (the Clerk metadata write) is still skipped once dbUserId
+  // is stamped. Name is written ONCE on first insert (Google names are
+  // unreliable — "THRISHAL ."); existing/seeded/Ops-curated rows keep theirs.
+  let [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, email));
+  if (!row) {
+    const [inserted] = await db
+      .insert(s.users)
+      .values({ sstEmail: email, name, batchYear: batchYearFromEmail(email) })
+      .onConflictDoNothing({ target: s.users.sstEmail })
+      .returning();
+    row = inserted ?? (await db.select().from(s.users).where(eq(s.users.sstEmail, email)))[0];
+  }
 
-  // Write the env bootstrap THROUGH to the DB (idempotent — only when not
-  // already super_admin), with an audit row so the promotion is visible in the
-  // trail like any other. changedBy = self: this is a system bootstrap.
+  // Self-healing super-admin write-through (idempotent) + audit row, so the
+  // env bootstrap is visible in the trail like any other promotion.
   if (wantsSuper && row.role !== "super_admin") {
     await db.batch([
       db.update(s.users).set({ role: "super_admin" }).where(eq(s.users.id, row.id)),
@@ -150,12 +137,18 @@ export async function ensureDbUser(): Promise<AuthGate> {
         reason: "bootstrapped via SUPER_ADMIN_EMAILS",
       }),
     ]);
+    row = { ...row, role: "super_admin" };
   }
 
-  const client = await clerkClient();
-  await client.users.updateUserMetadata(user.id, {
-    publicMetadata: { dbUserId: row.id, isOps, isSuper: wantsSuper },
-  });
+  const viewer: Viewer = { name, email, isOps: isOpsUser(row) || wantsSuper, dev: false };
+
+  // Stamp the DB id into Clerk metadata once for cheap identity resolution
+  // elsewhere; skip the slow Clerk write when it's already correct.
+  const meta = user.publicMetadata as { dbUserId?: string };
+  if (meta.dbUserId !== row.id) {
+    const client = await clerkClient();
+    await client.users.updateUserMetadata(user.id, { publicMetadata: { dbUserId: row.id } });
+  }
   return { status: "ok", email, viewer };
 }
 
@@ -184,6 +177,20 @@ export async function requireDbUser(): Promise<DbUser> {
 
 export function isOpsUser(u: DbUser): boolean {
   return u.role === "moderator" || u.role === "super_admin" || isOpsEmail(u.sstEmail);
+}
+
+// Moderator = the role allowed to take DESTRUCTIVE moderation actions (hide /
+// unhide). Deliberately role-only — it does NOT honor the OPS_EMAILS bootstrap,
+// so a student who's in OPS_EMAILS to help triage the queue can't hide a live
+// post by mistake (concern #4). super_admin counts as a moderator.
+export function isModerator(u: DbUser): boolean {
+  return u.role === "moderator" || u.role === "super_admin";
+}
+
+export async function requireModerator(): Promise<DbUser> {
+  const u = await requireDbUser();
+  if (!isModerator(u)) throw new Error("Moderator access required");
+  return u;
 }
 
 // Super admin = the only role allowed to grant/revoke roles. The DB role is the

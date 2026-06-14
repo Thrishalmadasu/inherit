@@ -468,14 +468,26 @@ npx vercel deploy --prod --yes   # deploy
      `SUPER_ADMIN_EMAILS` (§9), which `ensureDbUser` writes THROUGH to the DB on
      sign-in (self-healing — DB stays the single source of truth, env removable
      after first sign-in). Verified by 10 new harness assertions.
-   - **Still TODO from this triage (priority order):** (a) **Tier-3 pagination** —
-     `listFeed` (feed + search) is still unbounded; needs keyset pagination + UI,
-     plus the same for the Ops queue/published tables; (b) close the Ops-nav KNOWN
-     GAP (`app/ops/layout.tsx`) — source `viewer.isOps` from the DB role so
-     DB-promoted moderators see the nav link without `OPS_EMAILS`; (c) **gate hide to
-     moderator+** and surface a de-emphasized hide on every post (concern #4) so
-     student-ops can't fat-finger; (d) company/topic dedup design (companies are
-     free-text auto-created → dup risk); (e) daily moderator report email; (f) manual
+   - ✅ **Ops-nav gap closed:** `ensureDbUser` now resolves the users row every
+     request (one cheap indexed read; the slow Clerk metadata write stays gated) and
+     sources `viewer.isOps` from the DB role (`isOpsUser`), so a moderator promoted
+     purely via `/ops/users` sees the nav link without being in `OPS_EMAILS`.
+   - ✅ **#4 hide hardening:** destructive hide/unhide now require the moderator+
+     ROLE (`requireModerator`, NOT the `OPS_EMAILS` bootstrap) so student-ops can't
+     hide by mistake; the Ops published tab shows "View only" to non-moderators; and
+     a de-emphasized moderator-only hide control (reason modal) now lives on the
+     experience detail page, not just the published tab. +3 harness assertions.
+   - ✅ **Tier-3 pagination (feed + search):** `listFeedPage` filters (round via
+     EXISTS, outcome) + sorts (latest/helpful/views/difficulty-via-correlated-
+     subquery) + paginates in SQL; `FeedView` is now server-driven with "Load more"
+     (filters/sorts re-query page 1, so they span the whole dataset correctly).
+     `/search` uses server-side `searchExperiences` (bounded, debounced) instead of
+     loading the whole corpus to filter client-side. Reads via `app/actions/{feed,
+     search}.ts`. Verified by an 11-assertion read-only check.
+   - **Still TODO from this triage (priority order):** (a) paginate the remaining
+     unbounded reads — Ops queue/published tables, `getSavedExperiences`,
+     `getMyPosts`; (b) company/topic dedup design (companies are free-text
+     auto-created → dup risk); (c) daily moderator report email; (d) manual
      add-recipient UI in invite. Full backlog lives in the assistant's project memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,

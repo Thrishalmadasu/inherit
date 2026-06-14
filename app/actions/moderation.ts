@@ -1,7 +1,10 @@
 "use server";
-// Ops moderation endpoints (Flow E) — moderator/super_admin only.
+// Ops moderation endpoints (Flow E). Review actions (approve/suggest/reject)
+// allow any Ops user (incl. the OPS_EMAILS bootstrap); DESTRUCTIVE hide/unhide
+// require the moderator+ ROLE (requireModerator) so student-ops can't hide a
+// live post by mistake (concern #4).
 import { after } from "next/server";
-import { requireOps } from "@/lib/auth";
+import { requireModerator, requireOps } from "@/lib/auth";
 import { syncPublishedExperience } from "@/lib/sheets";
 import {
   approveCore,
@@ -34,11 +37,11 @@ export async function rejectExperience(expId: string, reason: string): Promise<A
 }
 
 export async function hideExperience(expId: string, reason: string): Promise<ActionResult> {
-  const actor = await requireOps();
+  const actor = await requireModerator();
   return runAction(() => hideCore(actor, expId, reason));
 }
 
 export async function unhideExperience(expId: string): Promise<ActionResult> {
-  const actor = await requireOps();
+  const actor = await requireModerator();
   return runAction(() => unhideCore(actor, expId));
 }

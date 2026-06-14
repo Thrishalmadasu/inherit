@@ -22,6 +22,7 @@ import {
   listRecentRoleChanges,
 } from "../lib/db/queries";
 import { changeRoleCore } from "../lib/write/roles";
+import { isModerator } from "../lib/auth";
 import { recordViewCore, setHelpfulCore, setSavedCore } from "../lib/write/engagement";
 import { submitExperienceCore, resubmitExperienceCore, WriteError } from "../lib/write/experiences";
 import {
@@ -607,6 +608,13 @@ async function main() {
     pageOne.users.length <= 2 && pageOne.pageSize === 2 && pageOne.totalPages >= 1,
     "listOpsUsers respects pagination bounds",
   );
+
+  // #4: destructive hide/unhide gate is the ROLE (requireModerator), never the
+  // OPS_EMAILS bootstrap — so a student helping triage can't hide a live post.
+  const freshStudent = await user("nikhil.23bcs10071@sst.scaler.com"); // untouched student
+  ok(!isModerator(freshStudent), "a student is NOT a moderator (hide gate is role-only)");
+  ok(isModerator(moderator), "a moderator passes the destructive-action gate");
+  ok(isModerator(await user("thrishal.23bcs10115@sst.scaler.com")), "a super admin counts as moderator");
 
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }

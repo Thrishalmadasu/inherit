@@ -8,9 +8,12 @@ import { Button } from "@/components/ui/button";
 import { OutcomePill, RoundPill, Pill } from "@/components/ui/pill";
 import { Difficulty } from "@/components/ui/primitives";
 import { QuestionCard, PrepTip, Section } from "@/components/experience/blocks";
+import { useRouter } from "next/navigation";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
 import { recordView, setHelpful, setSaved } from "@/app/actions/engagement";
+import { hideExperience } from "@/app/actions/moderation";
 import type { Experience } from "@/lib/types";
 
 export function ExperienceView({
@@ -18,11 +21,13 @@ export function ExperienceView({
   related,
   company,
   viewer,
+  canModerate,
 }: {
   exp: Experience;
   related: Experience[];
   company: { name: string; slug: string; industry: string };
   viewer: { helpful: boolean; saved: boolean };
+  canModerate: boolean;
 }) {
   const [saved, setSavedState] = useState(viewer.saved);
   const [helpful, setHelpfulState] = useState(viewer.helpful);
@@ -141,6 +146,7 @@ export function ExperienceView({
                 <Button onClick={handleShare}>
                   <Icon.upload /> Share
                 </Button>
+                {canModerate && <ModeratorHide expId={exp.id} />}
               </div>
             </div>
           </header>
@@ -334,6 +340,80 @@ function KV({ k, v }: { k: string; v: string }) {
     <>
       <span className="text-fg-3">{k}</span>
       <span className="text-right font-medium text-fg">{v}</span>
+    </>
+  );
+}
+
+// De-emphasized moderator-only control (concern #4): a quiet, muted button
+// rather than a prominent one, so a moderator can hide a live post from
+// anywhere it's visible without the action being easy to fat-finger. The
+// reason modal + destructive styling only appear once they commit. The action
+// is also role-gated server-side (requireModerator).
+function ModeratorHide({ expId }: { expId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async () => {
+    if (!reason.trim()) return;
+    setBusy(true);
+    const res = await hideExperience(expId, reason.trim());
+    setBusy(false);
+    if (!res.ok) {
+      toast(res.error);
+      return;
+    }
+    setOpen(false);
+    setReason("");
+    toast("Post hidden — pulled from student-facing views (logged)");
+    router.push("/feed");
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Moderator: hide this post"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-fg-3 transition-colors hover:bg-surface-3 hover:text-fg-2 [&_svg]:size-[13px]"
+      >
+        <Icon.shield /> Hide
+      </button>
+      <Modal
+        open={open}
+        onOpenChange={(o) => {
+          if (!o) {
+            setReason("");
+            setOpen(false);
+          }
+        }}
+        title="Hide this post?"
+        description="It will be pulled from every student-facing view. The author sees your reason and can edit + resubmit for re-review."
+      >
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason (required) — e.g. a factual claim was disputed, identifying details, etc."
+          className="min-h-[100px] w-full resize-y rounded-md border border-border bg-bg-2 px-3 py-2.5 text-[13.5px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]"
+        />
+        <div className="mt-3.5 flex items-center justify-between gap-3">
+          <span className="text-xs text-fg-3">Logged: who hid it, when, and why.</span>
+          <div className="flex gap-2">
+            <Button onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!reason.trim() || busy}
+              onClick={confirm}
+              className={cn(
+                "border-red-border bg-red-soft text-red hover:bg-[rgba(239,90,90,0.2)]",
+                (!reason.trim() || busy) && "cursor-not-allowed opacity-50",
+              )}
+            >
+              {busy ? "Hiding…" : "Hide post"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

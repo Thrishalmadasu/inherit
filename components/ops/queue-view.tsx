@@ -28,9 +28,11 @@ type View = "all" | "anonymous" | "published";
 export function OpsQueueView({
   queue,
   published,
+  canModerate,
 }: {
   queue: OpsQueueItem[];
   published: OpsPublishedItem[];
+  canModerate: boolean;
 }) {
   const router = useRouter();
   const [view, setView] = useState<View>("all");
@@ -108,6 +110,7 @@ export function OpsQueueView({
               key={e.id}
               item={e}
               busy={busyId === e.id}
+              canModerate={canModerate}
               onHide={() => setHideTarget(e)}
               onUnhide={() =>
                 run(e.id, () => unhideExperience(e.id), "Post is live again (unhide logged)")
@@ -318,11 +321,13 @@ function FullPostSection({ label, body }: { label: string; body: string }) {
 function PublishedRow({
   item,
   busy,
+  canModerate,
   onHide,
   onUnhide,
 }: {
   item: OpsPublishedItem;
   busy: boolean;
+  canModerate: boolean;
   onHide: () => void;
   onUnhide: () => void;
 }) {
@@ -355,7 +360,9 @@ function PublishedRow({
             : `Published ${item.publishedAt} · ${item.views} views · ${item.helpful} helpful`}
         </div>
       </div>
-      {hidden ? (
+      {!canModerate ? (
+        <span className="text-[11.5px] text-fg-3">View only</span>
+      ) : hidden ? (
         <Button onClick={onUnhide} disabled={busy}>
           <Icon.eye /> {busy ? "Working…" : "Unhide"}
         </Button>

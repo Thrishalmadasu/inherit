@@ -49,6 +49,7 @@ async function loadWhere(
   where: SQL | undefined,
   orderBy: SQL,
   limit?: number,
+  offset?: number,
 ): Promise<Loaded[]> {
   const base = db
     .select()
@@ -57,7 +58,7 @@ async function loadWhere(
     .innerJoin(s.users, eq(s.experiences.authorId, s.users.id))
     .where(where)
     .orderBy(orderBy);
-  const exps = await (limit != null ? base.limit(limit) : base);
+  const exps = await (limit != null ? base.limit(limit).offset(offset ?? 0) : base);
   if (exps.length === 0) return [];
 
   const ids = exps.map((r) => r.experiences.id);
@@ -327,6 +328,84 @@ export async function listFeed(): Promise<Experience[]> {
 export async function latestExperiences(n: number): Promise<Experience[]> {
   const rows = await loadWhere(visibleExp, desc(s.experiences.publishedAt), n);
   return rows.map(toCard);
+}
+
+// Server-side experience search (Tier-3) — matches role / company / round name,
+// bounded by `limit`, so /search no longer loads the whole corpus to filter.
+export async function searchExperiences(q: string, limit = 20): Promise<Experience[]> {
+  const t = q.trim();
+  if (!t) return [];
+  const like = `%${t}%`;
+  const where = and(
+    visibleExp,
+    or(
+      ilike(s.experiences.roleTitle, like),
+      ilike(s.companies.name, like),
+      sql`exists (select 1 from ${s.rounds} where ${s.rounds.experienceId} = ${s.experiences.id} and ${s.rounds.name} ilike ${like})`,
+    ),
+  );
+  const rows = await loadWhere(where, desc(s.experiences.publishedAt), limit);
+  return rows.map(toCard);
+}
+
+// ── Paginated feed (Tier-3): filter + sort + paginate in SQL ─────────────────
+// The /feed and /search filtering/sorting used to run in the client over the
+// WHOLE corpus. Doing it server-side means a page load fetches one bounded page
+// and the sort spans the full dataset correctly.
+export type FeedSort = "latest" | "helpful" | "views" | "difficulty";
+export interface FeedQuery {
+  round?: string; // "all" | round name | "Tech" (prefix match)
+  outcome?: string; // "all" | overall_outcome enum value
+  sort?: FeedSort;
+  page?: number;
+  pageSize?: number;
+}
+export interface FeedPage {
+  items: Experience[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export async function listFeedPage(opts: FeedQuery = {}): Promise<FeedPage> {
+  const pageSize = Math.min(Math.max(opts.pageSize ?? 20, 1), 50);
+  const page = Math.max(opts.page ?? 1, 1);
+  const offset = (page - 1) * pageSize;
+
+  const conds: (SQL | undefined)[] = [visibleExp];
+  const outcome = opts.outcome && opts.outcome !== "all" ? opts.outcome : null;
+  if (outcome && (s.overallOutcome.enumValues as readonly string[]).includes(outcome))
+    conds.push(
+      eq(s.experiences.overallOutcome, outcome as (typeof s.overallOutcome.enumValues)[number]),
+    );
+  const round = opts.round && opts.round !== "all" ? opts.round : null;
+  if (round) {
+    const nameCond =
+      round === "Tech" ? sql`${s.rounds.name} ilike 'Tech%'` : sql`${s.rounds.name} = ${round}`;
+    conds.push(
+      sql`exists (select 1 from ${s.rounds} where ${s.rounds.experienceId} = ${s.experiences.id} and ${nameCond})`,
+    );
+  }
+  const where = and(...conds);
+
+  // Deterministic tiebreaker (id) keeps offset pages stable across equal sort keys.
+  const tie = sql`${s.experiences.id} desc`;
+  const orderBy =
+    opts.sort === "helpful"
+      ? sql`${s.experiences.helpfulCount} desc, ${tie}`
+      : opts.sort === "views"
+        ? sql`${s.experiences.viewCount} desc, ${tie}`
+        : opts.sort === "difficulty"
+          ? sql`(select avg(${s.contentBlocks.difficulty}) from ${s.contentBlocks} inner join ${s.rounds} on ${s.contentBlocks.roundId} = ${s.rounds.id} where ${s.rounds.experienceId} = ${s.experiences.id}) desc nulls last, ${tie}`
+          : sql`${s.experiences.publishedAt} desc nulls last, ${tie}`;
+
+  const [[{ total }], rows] = await Promise.all([
+    db.select({ total: count() }).from(s.experiences).where(where),
+    loadWhere(where, orderBy, pageSize, offset),
+  ]);
+
+  return { items: rows.map(toCard), total, page, pageSize, hasMore: offset + rows.length < total };
 }
 
 // ── Engagement reads (Session 3) ─────────────────────────────────────────────

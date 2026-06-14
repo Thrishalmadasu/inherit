@@ -75,9 +75,16 @@ export type AuthGate =
 
 // Mirror the Clerk user into our `users` table (upsert by sst_email) on first
 // sign-in. After the first mirror we stamp Clerk publicMetadata with the DB id
-// so subsequent requests skip the DB write entirely; `isOps` rides along so
-// the client nav can show/hide the Ops link (the authoritative gate is
-// server-side in app/ops/layout.tsx). Re-syncs if OPS_EMAILS changes.
+// so subsequent requests skip the DB write entirely; `isOps`/`isSuper` ride
+// along so the client nav can show/hide the Ops link (the authoritative gate is
+// server-side in app/ops/layout.tsx) AND so adding someone to OPS_EMAILS /
+// SUPER_ADMIN_EMAILS later re-triggers the slow path. Re-syncs when either
+// allowlist changes.
+//
+// Self-healing super-admin (Option A): an email in SUPER_ADMIN_EMAILS is
+// promoted to super_admin IN THE DB here, so the users table + role_change_audit
+// stay the single source of truth — the env var is just the seed that breaks the
+// fresh-DB chicken-and-egg, and can be removed once the role is set.
 export async function ensureDbUser(): Promise<AuthGate> {
   const devEmail = await devImpersonationEmail();
   if (devEmail) {
@@ -98,18 +105,21 @@ export async function ensureDbUser(): Promise<AuthGate> {
   // Backstop to the Clerk dashboard domain allowlist — never trust one layer.
   if (!email.endsWith(`@${SST_DOMAIN}`)) return { status: "wrong-domain", email };
 
+  // A super-admin email is also an Ops user (so the nav link shows).
+  const wantsSuper = isSuperAdminEmail(email);
   // Display name mirrors what the client previously read from useUser():
   // the Google profile name, cleaned — NOT a per-request DB lookup, so the
   // metadata fast-path below stays a fast path.
   const viewer: Viewer = {
     name: cleanPersonName(user.fullName) || shortFromEmail(email),
     email,
-    isOps: isOpsEmail(email),
+    isOps: isOpsEmail(email) || wantsSuper,
     dev: false,
   };
-  const meta = user.publicMetadata as { dbUserId?: string; isOps?: boolean };
+  const meta = user.publicMetadata as { dbUserId?: string; isOps?: boolean; isSuper?: boolean };
   const isOps = viewer.isOps;
-  if (meta.dbUserId && meta.isOps === isOps) return { status: "ok", email, viewer };
+  if (meta.dbUserId && meta.isOps === isOps && meta.isSuper === wantsSuper)
+    return { status: "ok", email, viewer };
 
   // Name is written on first insert only — our `users` table is the system of
   // record, and Google profile names are unreliable ("THRISHAL ."). Existing
@@ -118,17 +128,33 @@ export async function ensureDbUser(): Promise<AuthGate> {
     .insert(s.users)
     .values({ sstEmail: email, name: viewer.name, batchYear: batchYearFromEmail(email) })
     .onConflictDoNothing({ target: s.users.sstEmail })
-    .returning({ id: s.users.id });
+    .returning({ id: s.users.id, role: s.users.role });
   const row =
     inserted ??
     (await db
-      .select({ id: s.users.id })
+      .select({ id: s.users.id, role: s.users.role })
       .from(s.users)
       .where(eq(s.users.sstEmail, email)))[0];
 
+  // Write the env bootstrap THROUGH to the DB (idempotent — only when not
+  // already super_admin), with an audit row so the promotion is visible in the
+  // trail like any other. changedBy = self: this is a system bootstrap.
+  if (wantsSuper && row.role !== "super_admin") {
+    await db.batch([
+      db.update(s.users).set({ role: "super_admin" }).where(eq(s.users.id, row.id)),
+      db.insert(s.roleChangeAudit).values({
+        changedUserId: row.id,
+        changedByUserId: row.id,
+        fromRole: row.role,
+        toRole: "super_admin",
+        reason: "bootstrapped via SUPER_ADMIN_EMAILS",
+      }),
+    ]);
+  }
+
   const client = await clerkClient();
   await client.users.updateUserMetadata(user.id, {
-    publicMetadata: { dbUserId: row.id, isOps },
+    publicMetadata: { dbUserId: row.id, isOps, isSuper: wantsSuper },
   });
   return { status: "ok", email, viewer };
 }
@@ -160,8 +186,10 @@ export function isOpsUser(u: DbUser): boolean {
   return u.role === "moderator" || u.role === "super_admin" || isOpsEmail(u.sstEmail);
 }
 
-// Super admin = the only role allowed to grant/revoke roles. DB role first,
-// SUPER_ADMIN_EMAILS as the fresh-DB bootstrap (see isSuperAdminEmail).
+// Super admin = the only role allowed to grant/revoke roles. The DB role is the
+// source of truth (ensureDbUser writes SUPER_ADMIN_EMAILS through to it on
+// sign-in); the email OR-gate stays only as a can't-lock-yourself-out fallback
+// for the window before that write-through has run (or after a DB reset).
 export function isSuperAdmin(u: DbUser): boolean {
   return u.role === "super_admin" || isSuperAdminEmail(u.sstEmail);
 }

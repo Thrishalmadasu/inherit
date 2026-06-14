@@ -11,7 +11,6 @@ import type { DraftBlock, DraftBlockType, DraftRound } from "@/lib/draft";
 import {
   BLOCK_TAG_SUGGESTIONS,
   BLOCK_TYPE_META,
-  PIPELINE_ROUNDS,
   ROUND_STATUSES,
   emptyBlock,
 } from "@/lib/share-form";
@@ -30,6 +29,8 @@ export function RoundEditor({
   round,
   idx,
   total,
+  roundTypes,
+  topics,
   onChange,
   onMove,
   onDelete,
@@ -37,12 +38,17 @@ export function RoundEditor({
   round: DraftRound;
   idx: number;
   total: number;
+  roundTypes: string[]; // canonical round vocabulary (DB-sourced, concern #10)
+  topics: { label: string; category: string }[]; // canonical topic taxonomy (DB)
   onChange: (next: DraftRound) => void;
   onMove: (dir: -1 | 1) => void;
   onDelete?: () => void;
 }) {
   const set = (patch: Partial<DraftRound>) => onChange({ ...round, ...patch });
-  const isCustom = !PIPELINE_ROUNDS.includes(round.round as (typeof PIPELINE_ROUNDS)[number]);
+  // A non-canonical label (e.g. from an invite ?round= link, or legacy data)
+  // still needs to render as the selected option — but students can only ever
+  // pick canonical entries; Ops introduces new round types in /ops/taxonomy.
+  const isKnown = roundTypes.includes(round.round);
 
   const setBlock = (i: number, next: DraftBlock) =>
     set({ blocks: round.blocks.map((b, j) => (j === i ? next : b)) });
@@ -83,27 +89,21 @@ export function RoundEditor({
           <div className="flex flex-col gap-1.5">
             <span className={LABEL}>Round</span>
             <select
-              value={isCustom ? "__custom" : round.round}
-              onChange={(e) =>
-                set({ round: e.target.value === "__custom" ? "Custom round" : e.target.value })
-              }
+              value={round.round}
+              onChange={(e) => set({ round: e.target.value })}
               className={cn(INPUT, "h-9 cursor-pointer appearance-none text-[13px]")}
             >
-              {PIPELINE_ROUNDS.map((r) => (
+              {/* Keep a non-canonical prefilled value selectable (invite links /
+                  legacy), but the offered choices are the canonical list only. */}
+              {!isKnown && round.round && (
+                <option value={round.round}>{round.round} (non-standard)</option>
+              )}
+              {roundTypes.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
               ))}
-              <option value="__custom">Other / Custom…</option>
             </select>
-            {isCustom && (
-              <input
-                value={round.round}
-                onChange={(e) => set({ round: e.target.value })}
-                placeholder="Name this round, e.g. SQL Round"
-                className={cn(INPUT, "h-9 text-[13px]")}
-              />
-            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -196,6 +196,7 @@ export function RoundEditor({
               key={i}
               block={b}
               index={i}
+              topics={topics}
               onChange={(next) => setBlock(i, next)}
               onRemove={() => removeBlock(i)}
             />
@@ -225,11 +226,13 @@ export function RoundEditor({
 function BlockEditor({
   block,
   index,
+  topics,
   onChange,
   onRemove,
 }: {
   block: DraftBlock;
   index: number;
+  topics: { label: string; category: string }[];
   onChange: (next: DraftBlock) => void;
   onRemove: () => void;
 }) {
@@ -269,7 +272,8 @@ function BlockEditor({
         </span>
         <TagInput
           value={block.topics}
-          onChange={(topics) => set({ topics })}
+          onChange={(next) => set({ topics: next })}
+          taxonomy={topics}
           suggestions={BLOCK_TAG_SUGGESTIONS[block.type]}
         />
       </div>

@@ -19,6 +19,7 @@ export function OpsShell({
   const TABS = [
     { href: "/ops/queue", label: "Moderation queue", count: pendingCount },
     { href: "/ops/invite", label: "Invite to share" },
+    { href: "/ops/taxonomy", label: "Companies & topics" },
     { href: "/ops/users", label: "Users" },
   ];
   return (

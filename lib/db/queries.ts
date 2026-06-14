@@ -19,6 +19,7 @@ import type {
   RoundEntry,
 } from "@/lib/types";
 import type { ShareDraftForm } from "@/lib/draft";
+import type { ShareFormOptions } from "@/lib/share-form";
 
 const visibleExp = and(
   eq(s.experiences.reviewStatus, "approved"),
@@ -31,13 +32,19 @@ const fmtDate = (d: Date | null) =>
     ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
     : "";
 const batchOf = (year: number | null) => (year ? `'${String(year).slice(2)}` : "'27");
+// Display company name: the canonical row's name, or the proposed name for an
+// as-yet-unresolved under-review post (author/Ops surfaces only).
+const companyNameOf = (l: Loaded) => l.company?.name ?? l.exp.proposedCompanyName ?? "—";
 const daysSince = (d: Date | null) =>
   d ? Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000)) : 999;
 
 // ── Load + map all visible experiences (small dataset; aggregate in JS) ──────
 type Loaded = {
   exp: typeof s.experiences.$inferSelect;
-  company: typeof s.companies.$inferSelect;
+  // null only for under-review posts naming a not-yet-canonical (proposed)
+  // company — those surface ONLY in author/Ops reads. Every visibleExp row has
+  // a company (approval requires the proposed name be resolved first).
+  company: typeof s.companies.$inferSelect | null;
   author: typeof s.users.$inferSelect;
   rounds: (typeof s.rounds.$inferSelect & {
     blocks: (typeof s.contentBlocks.$inferSelect & { tags: string[] })[];
@@ -54,7 +61,7 @@ async function loadWhere(
   const base = db
     .select()
     .from(s.experiences)
-    .innerJoin(s.companies, eq(s.experiences.companyId, s.companies.id))
+    .leftJoin(s.companies, eq(s.experiences.companyId, s.companies.id))
     .innerJoin(s.users, eq(s.experiences.authorId, s.users.id))
     .where(where)
     .orderBy(orderBy);
@@ -149,7 +156,7 @@ function toCard(l: Loaded): Experience {
     helpful: l.exp.helpfulCount,
     views: l.exp.viewCount,
     excerpt: l.exp.overview ?? undefined,
-    company: l.company.name,
+    company: companyNameOf(l),
     ...(single
       ? {
           round: single.name,
@@ -302,10 +309,11 @@ export async function getExperience(
   id: string,
 ): Promise<{ exp: Experience; related: Experience[]; company: { name: string; slug: string; industry: string } } | null> {
   const [found] = await loadWhere(and(visibleExp, eq(s.experiences.id, id)), desc(s.experiences.publishedAt));
-  if (!found) return null;
+  if (!found || !found.company) return null; // visible ⇒ company always set
+  const company = found.company;
   // ≤4 related from the same company — scoped in SQL, not a full-corpus scan.
   const relatedRows = await loadWhere(
-    and(visibleExp, eq(s.experiences.companyId, found.company.id), ne(s.experiences.id, id)),
+    and(visibleExp, eq(s.experiences.companyId, company.id), ne(s.experiences.id, id)),
     desc(s.experiences.publishedAt),
     4,
   );
@@ -314,9 +322,9 @@ export async function getExperience(
     exp: toDetail(found),
     related,
     company: {
-      name: found.company.name,
-      slug: found.company.slug,
-      industry: found.company.industry ?? "",
+      name: company.name,
+      slug: company.slug,
+      industry: company.industry ?? "",
     },
   };
 }
@@ -517,7 +525,7 @@ export async function getMyPosts(userId: string): Promise<MyPost[]> {
     const status = statusOf(l.exp);
     return {
       id: l.exp.id,
-      company: l.company.name,
+      company: companyNameOf(l),
       role: l.exp.roleTitle,
       overallOutcome: l.exp.overallOutcome,
       status,
@@ -563,8 +571,8 @@ export async function getMyPendingPost(userId: string): Promise<PendingPreview |
   return {
     id: l.exp.id,
     exp: toDetail(l),
-    companyName: l.company.name,
-    companyIndustry: l.company.industry ?? "",
+    companyName: companyNameOf(l),
+    companyIndustry: l.company?.industry ?? "",
     submittedAgo: agoOf(l.exp.createdAt),
   };
 }
@@ -597,7 +605,10 @@ export async function getOpsQueue(opts?: {
       email: l.author.sstEmail,
     },
     bylineAs: l.exp.isAnonymous ? "anonymous" : "real",
-    company: l.company.name,
+    company: companyNameOf(l),
+    // Proposed (not-yet-canonical) company awaiting moderator resolution
+    // (concern #10). Null once bound to a canonical company.
+    proposedCompany: l.exp.companyId ? null : (l.exp.proposedCompanyName ?? null),
     role: l.exp.roleTitle,
     round: l.rounds[0]?.name ?? "—",
     outcome: l.exp.overallOutcome,
@@ -625,7 +636,7 @@ export async function listOpsPublished(opts?: {
   ]);
   const items = rows.map((l) => ({
     id: l.exp.id,
-    company: l.company.name,
+    company: companyNameOf(l),
     role: l.exp.roleTitle,
     round: l.rounds[0]?.name ?? "—",
     outcome: l.exp.overallOutcome,
@@ -757,7 +768,7 @@ export async function getEditPrefill(
   return {
     status: statusOf(l.exp),
     form: {
-      company: l.company.name,
+      company: companyNameOf(l),
       role: l.exp.roleTitle,
       year: l.exp.year,
       outcome: l.exp.overallOutcome,
@@ -785,3 +796,149 @@ export async function getEditPrefill(
 // Invite-to-share has NO dedupe (product decision 2026-06-13): Ops invites
 // students per experience, so the campaign send re-parses the CSV and emails
 // every valid row — there is no "already shared / already invited" lookup.
+
+// ── Canonical vocabularies (concern #10) ─────────────────────────────────────
+// The share form SELECTs companies / round types / topic tags from the DB, so
+// students can never introduce a duplicate by free-typing. Round types + topics
+// are restricted to active rows; companies are the full canonical list (the
+// typeahead suggests them, and an unmatched name rides along as a proposal).
+export async function getShareFormOptions(): Promise<ShareFormOptions> {
+  const [companies, roundTypeRows, topicRows] = await Promise.all([
+    db
+      .select({ name: s.companies.name, industry: s.companies.industry })
+      .from(s.companies)
+      .orderBy(s.companies.name),
+    db
+      .select({ label: s.roundTypes.label })
+      .from(s.roundTypes)
+      .where(eq(s.roundTypes.isActive, true))
+      .orderBy(asc(s.roundTypes.position), asc(s.roundTypes.label)),
+    db
+      .select({ label: s.topicTags.label, category: s.topicTags.category })
+      .from(s.topicTags)
+      .where(eq(s.topicTags.isActive, true))
+      .orderBy(asc(s.topicTags.label)),
+  ]);
+  return {
+    companies: companies.map((c) => ({ name: c.name, industry: c.industry ?? "" })),
+    roundTypes: roundTypeRows.map((r) => r.label),
+    topics: topicRows.map((t) => ({ label: t.label, category: t.category })),
+  };
+}
+
+// ── Ops taxonomy admin reads ─────────────────────────────────────────────────
+export interface OpsCompanyRow {
+  id: string;
+  name: string;
+  slug: string;
+  industry: string;
+  location: string;
+  aliases: string[];
+  experiences: number; // total experiences bound (any status), for merge safety
+}
+
+// Companies + a bound-experience count (any review status), name-ordered. The
+// count tells Ops what a merge/rename will move. `q` matches name or alias.
+export async function listOpsCompanies(q?: string): Promise<OpsCompanyRow[]> {
+  const term = q?.trim();
+  const where = term
+    ? sql`lower(${s.companies.name}) like ${`%${term.toLowerCase()}%`}
+          or exists (select 1 from unnest(${s.companies.aliases}) a
+                     where lower(a) like ${`%${term.toLowerCase()}%`})`
+    : undefined;
+  const [companies, counts] = await Promise.all([
+    db.select().from(s.companies).where(where).orderBy(asc(s.companies.name)),
+    db
+      .select({ companyId: s.experiences.companyId, n: count() })
+      .from(s.experiences)
+      .groupBy(s.experiences.companyId),
+  ]);
+  const byId = new Map(counts.map((r) => [r.companyId, r.n]));
+  return companies.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    industry: c.industry ?? "",
+    location: c.location ?? "",
+    aliases: c.aliases,
+    experiences: byId.get(c.id) ?? 0,
+  }));
+}
+
+export interface OpsRoundTypeRow {
+  id: string;
+  label: string;
+  slug: string;
+  position: number;
+  isActive: boolean;
+  uses: number; // rounds carrying this label (by name), for context
+}
+
+export async function listOpsRoundTypes(): Promise<OpsRoundTypeRow[]> {
+  const [types, uses] = await Promise.all([
+    db
+      .select()
+      .from(s.roundTypes)
+      .orderBy(asc(s.roundTypes.position), asc(s.roundTypes.label)),
+    db.select({ name: s.rounds.name, n: count() }).from(s.rounds).groupBy(s.rounds.name),
+  ]);
+  const byName = new Map(uses.map((r) => [r.name, r.n]));
+  return types.map((t) => ({
+    id: t.id,
+    label: t.label,
+    slug: t.slug,
+    position: t.position,
+    isActive: t.isActive,
+    uses: byName.get(t.label) ?? 0,
+  }));
+}
+
+export interface OpsTopicRow {
+  id: string;
+  label: string;
+  slug: string;
+  category: (typeof s.tagCategory.enumValues)[number];
+  isDsa: boolean;
+  isActive: boolean;
+  uses: number; // content-block links, for context
+}
+
+export async function listOpsTopics(): Promise<OpsTopicRow[]> {
+  const [topics, uses] = await Promise.all([
+    db.select().from(s.topicTags).orderBy(asc(s.topicTags.label)),
+    db
+      .select({ tagId: s.contentBlockTopicTags.tagId, n: count() })
+      .from(s.contentBlockTopicTags)
+      .groupBy(s.contentBlockTopicTags.tagId),
+  ]);
+  const byId = new Map(uses.map((r) => [r.tagId, r.n]));
+  return topics.map((t) => ({
+    id: t.id,
+    label: t.label,
+    slug: t.slug,
+    category: t.category,
+    isDsa: t.isDsa,
+    isActive: t.isActive,
+    uses: byId.get(t.id) ?? 0,
+  }));
+}
+
+// Company typeahead for the Ops review step (resolving a proposed company) —
+// canonical companies matching `q` by name or alias, bounded.
+export async function searchCompanies(
+  q: string,
+  limit = 8,
+): Promise<{ id: string; name: string; industry: string }[]> {
+  const t = q.trim().toLowerCase();
+  if (!t) return [];
+  const rows = await db
+    .select({ id: s.companies.id, name: s.companies.name, industry: s.companies.industry })
+    .from(s.companies)
+    .where(
+      sql`lower(${s.companies.name}) like ${`%${t}%`}
+          or exists (select 1 from unnest(${s.companies.aliases}) a where lower(a) like ${`%${t}%`})`,
+    )
+    .orderBy(asc(s.companies.name))
+    .limit(limit);
+  return rows.map((r) => ({ id: r.id, name: r.name, industry: r.industry ?? "" }));
+}

@@ -4,7 +4,7 @@
 // props; every button calls a real Server Action. Reason discipline is
 // enforced here too: Suggest edits / Reject / Hide all demand a note before
 // the confirm button enables (the action layer re-checks).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,12 @@ import {
   approveExperience,
   hideExperience,
   rejectExperience,
+  resolveExperienceCompany,
   suggestEdits,
   unhideExperience,
 } from "@/app/actions/moderation";
-import { fetchOpsPublished, fetchOpsQueue } from "@/app/actions/ops";
+import { fetchOpsPublished, fetchOpsQueue, searchCompaniesForResolve } from "@/app/actions/ops";
+import type { CompanyResolution } from "@/lib/write/moderation";
 import type { Paginated } from "@/lib/db/queries";
 import type { ActionResult } from "@/lib/write/run";
 import type { OpsPublishedItem, OpsQueueItem } from "@/lib/types";
@@ -103,6 +105,22 @@ export function OpsQueueView({
     return true;
   };
 
+  const resolveCompany = async (id: string, resolution: CompanyResolution): Promise<boolean> => {
+    setBusyId(id);
+    const res = await resolveExperienceCompany(id, resolution);
+    setBusyId(null);
+    if (!res.ok) {
+      toast(res.error);
+      return false;
+    }
+    toast(`Company set to ${res.data.companyName}`);
+    allList.reset();
+    anonList.reset();
+    pubList.reset();
+    router.refresh();
+    return true;
+  };
+
   const oldest = allList.items[0];
 
   return (
@@ -139,7 +157,13 @@ export function OpsQueueView({
         ) : (
           <div className="flex flex-col gap-2.5">
             {queueList.items.map((q) => (
-              <ModCard key={q.id} item={q} busy={busyId === q.id} run={run} />
+              <ModCard
+                key={q.id}
+                item={q}
+                busy={busyId === q.id}
+                run={run}
+                resolveCompany={resolveCompany}
+              />
             ))}
           </div>
         )
@@ -192,10 +216,22 @@ export function OpsQueueView({
 }
 
 type RunFn = (id: string, fn: () => Promise<ActionResult>, doneMsg: string) => Promise<boolean>;
+type ResolveFn = (id: string, resolution: CompanyResolution) => Promise<boolean>;
 
-function ModCard({ item, busy, run }: { item: OpsQueueItem; busy: boolean; run: RunFn }) {
+function ModCard({
+  item,
+  busy,
+  run,
+  resolveCompany,
+}: {
+  item: OpsQueueItem;
+  busy: boolean;
+  run: RunFn;
+  resolveCompany: ResolveFn;
+}) {
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState<"reject" | "edits" | null>(null);
+  const unresolved = Boolean(item.proposedCompany);
 
   const initials = item.realAuthor.name
     .split(" ")
@@ -266,6 +302,17 @@ function ModCard({ item, busy, run }: { item: OpsQueueItem; busy: boolean; run: 
         <span>{item.hasReflection ? "Has reflection" : "No reflection"}</span>
       </div>
 
+      {/* Proposed-company resolution (concern #10): the student named a company
+          that isn't canonical yet. Map it to an existing one (dedup) or promote
+          it — required before this post can be approved. */}
+      {unresolved && (
+        <CompanyResolver
+          proposed={item.proposedCompany ?? ""}
+          busy={busy}
+          onResolve={(resolution) => resolveCompany(item.id, resolution)}
+        />
+      )}
+
       {/* Full post, inline — moderators approve what they actually read */}
       {open && <FullPost item={item} />}
 
@@ -292,8 +339,12 @@ function ModCard({ item, busy, run }: { item: OpsQueueItem; busy: boolean; run: 
           onClick={() =>
             run(item.id, () => approveExperience(item.id), "Approved — the post is live")
           }
-          disabled={busy}
-          className="border-white/10 bg-gradient-to-b from-[#34c97f] to-[#1f8a5b] text-white shadow-[0_0_0_1px_var(--color-green-border),0_4px_14px_-3px_rgba(46,207,133,0.35)] hover:from-[#3fd48a] hover:to-[#249a66]"
+          disabled={busy || unresolved}
+          title={unresolved ? "Resolve the proposed company first" : undefined}
+          className={cn(
+            "border-white/10 bg-gradient-to-b from-[#34c97f] to-[#1f8a5b] text-white shadow-[0_0_0_1px_var(--color-green-border),0_4px_14px_-3px_rgba(46,207,133,0.35)] hover:from-[#3fd48a] hover:to-[#249a66]",
+            unresolved && "cursor-not-allowed opacity-50",
+          )}
         >
           <Icon.check /> {busy ? "Working…" : "Approve & publish"}
         </Button>
@@ -427,6 +478,130 @@ function PublishedRow({
         >
           <Icon.eye /> Hide
         </Button>
+      )}
+    </div>
+  );
+}
+
+// Proposed-company resolver: map the student's typed name to an existing
+// canonical company (dedup — the typed spelling is folded in as an alias) or
+// promote it to a new canonical company. The single Ops gate for concern #10.
+function CompanyResolver({
+  proposed,
+  busy,
+  onResolve,
+}: {
+  proposed: string;
+  busy: boolean;
+  onResolve: (resolution: CompanyResolution) => Promise<boolean>;
+}) {
+  const [q, setQ] = useState(proposed);
+  const [matches, setMatches] = useState<{ id: string; name: string; industry: string }[]>([]);
+  const [mode, setMode] = useState<"map" | "new">("map");
+  const [newName, setNewName] = useState(proposed);
+  const [newIndustry, setNewIndustry] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const term = q.trim();
+      if (term.length < 2) {
+        setMatches([]);
+        return;
+      }
+      try {
+        setMatches(await searchCompaniesForResolve(term));
+      } catch {
+        setMatches([]);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const INPUT =
+    "h-9 w-full rounded-md border border-border bg-bg-2 px-3 text-[13px] text-fg outline-none placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]";
+
+  return (
+    <div className="mb-3 rounded-md border border-amber-border bg-amber-soft/40 p-3.5">
+      <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-amber">
+        <Icon.warn className="size-4 shrink-0" />
+        New company “{proposed}” — map it to an existing company or add it before approving.
+      </div>
+
+      <div className="mb-2.5 inline-flex overflow-hidden rounded-md border border-border bg-surface">
+        {(["map", "new"] as const).map((m, i) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={cn(
+              "h-8 px-3 text-xs font-medium transition-[background,color]",
+              i === 0 && "border-r border-border",
+              mode === m ? "bg-blue-soft text-blue" : "text-fg-3 hover:text-fg",
+            )}
+          >
+            {m === "map" ? "Map to existing" : "Add as new"}
+          </button>
+        ))}
+      </div>
+
+      {mode === "map" ? (
+        <div className="flex flex-col gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search canonical companies…"
+            className={INPUT}
+          />
+          {matches.length === 0 ? (
+            <p className="px-0.5 text-[12px] text-fg-3">
+              {q.trim().length < 2 ? "Type to search." : "No canonical match — add it as new instead."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {matches.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onResolve({ existingCompanyId: c.id })}
+                  className="flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2 text-left text-[13px] hover:border-blue-border disabled:opacity-50"
+                >
+                  <span className="grid size-6 place-items-center rounded-[6px] border border-border-strong bg-bg-2 text-[12px] font-bold">
+                    {c.name[0]}
+                  </span>
+                  <b className="font-semibold">{c.name}</b>
+                  {c.industry && <span className="text-[11.5px] text-fg-3">{c.industry}</span>}
+                  <span className="ml-auto text-[11.5px] font-medium text-blue">Map →</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Company name"
+            className={INPUT}
+          />
+          <input
+            value={newIndustry}
+            onChange={(e) => setNewIndustry(e.target.value)}
+            placeholder="Industry (optional) — e.g. Fintech"
+            className={INPUT}
+          />
+          <Button
+            variant="primary"
+            disabled={busy || !newName.trim()}
+            onClick={() =>
+              onResolve({ newCompany: { name: newName.trim(), industry: newIndustry.trim() || undefined } })
+            }
+            className="self-start"
+          >
+            <Icon.plus /> {busy ? "Adding…" : "Add canonical company"}
+          </Button>
+        </div>
       )}
     </div>
   );

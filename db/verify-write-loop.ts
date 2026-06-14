@@ -5,7 +5,7 @@
 //   Run: npx tsx --env-file=.env.local db/verify-write-loop.ts
 // (--env-file, not process.loadEnvFile: lib/db connects at import time.)
 // Leaves test rows behind — reseed afterwards (npx tsx db/seed.ts).
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, schema as s } from "../lib/db";
 import {
   getEditPrefill,
@@ -13,11 +13,14 @@ import {
   getMyPosts,
   getOpsQueue,
   getSavedExperiences,
+  getShareFormOptions,
   getViewerEngagement,
   listFeed,
   getExperience,
   getCompanyPage,
+  listOpsCompanies,
   listOpsPublished,
+  listOpsRoundTypes,
   listOpsUsers,
   listRecentRoleChanges,
 } from "../lib/db/queries";
@@ -29,9 +32,17 @@ import {
   approveCore,
   hideCore,
   rejectCore,
+  resolveExperienceCompanyCore,
   suggestEditsCore,
   unhideCore,
 } from "../lib/write/moderation";
+import {
+  addCompanyCore,
+  addRoundTypeCore,
+  mergeCompaniesCore,
+  renameRoundTypeCore,
+  setRoundTypeActiveCore,
+} from "../lib/write/taxonomy";
 import {
   deleteMyPostCore,
   restoreMyPostCore,
@@ -431,6 +442,10 @@ async function main() {
 
   console.log("\n— roadmap #5: review-status emails (Flow D) —");
   sentEmails.length = 0;
+  // Make this company canonical up front so the submissions below bind directly
+  // (concern #10 added the resolve-before-approve gate; this section is about
+  // emails/sheets, not company resolution).
+  await addCompanyCore(moderator, { name: "Verify Sheets Co" });
   const sheetForm = form("Verify Sheets Co", {
     rounds: [
       {
@@ -615,6 +630,133 @@ async function main() {
   ok(!isModerator(freshStudent), "a student is NOT a moderator (hide gate is role-only)");
   ok(isModerator(moderator), "a moderator passes the destructive-action gate");
   ok(isModerator(await user("thrishal.23bcs10115@sst.scaler.com")), "a super admin counts as moderator");
+
+  console.log("\n— concern #10: canonical entities, zero duplicates —");
+
+  // Canonical round/topic validation: students can only use active DB rows.
+  ok(
+    (
+      await rejects(() =>
+        submitExperienceCore(student1, {
+          ...form("Amazon"),
+          rounds: [
+            { round: "Totally Made-Up Round", status: "Passed", detailed: false, platform: "", note: "", blocks: [] },
+          ],
+        } as ShareDraftForm),
+      )
+    ).includes("Unknown round type"),
+    "non-canonical round type refused at submit",
+  );
+
+  // Proposed-company flow: an unknown company is NOT auto-created — it rides as
+  // a proposed name until a moderator resolves it (the single gate).
+  const propId = await submitExperienceCore(student1, form("Goldman Sachs Pvt"));
+  let propRow = await expRow(propId);
+  ok(
+    propRow.companyId === null && propRow.proposedCompanyName === "Goldman Sachs Pvt",
+    "unknown company rides as a proposed name (not auto-created)",
+  );
+  ok(
+    (await db.select().from(s.companies).where(sql`lower(name) = ${"goldman sachs pvt"}`)).length === 0,
+    "no speculative company row was created",
+  );
+  ok(
+    (await rejects(() => approveCore(moderator, propId))).includes("Resolve the proposed company"),
+    "approve is blocked until the proposed company is resolved",
+  );
+
+  // Resolve by PROMOTING to a new canonical company → approve unblocks.
+  const promoteCo = await resolveExperienceCompanyCore(moderator, propId, {
+    newCompany: { name: "Goldman Sachs", industry: "Investment Banking" },
+  });
+  ok(promoteCo.companyName === "Goldman Sachs", "moderator promotes the proposal to a canonical company");
+  propRow = await expRow(propId);
+  ok(
+    propRow.companyId != null && propRow.proposedCompanyName === null,
+    "experience binds to the canonical company; proposal cleared",
+  );
+  await approveCore(moderator, propId);
+  ok((await visibleEverywhere(propId, "goldman-sachs")).feed, "resolved + approved post is visible");
+
+  // Resolve by MAPPING to an existing company → the typed spelling becomes an
+  // alias, so the NEXT student typing it auto-binds (dedup at the root).
+  const varId = await submitExperienceCore(student2, form("Amzn"));
+  ok((await expRow(varId)).companyId === null, "a variant spelling rides as proposed too");
+  const [amazon] = await db.select().from(s.companies).where(eq(s.companies.slug, "amazon"));
+  await resolveExperienceCompanyCore(moderator, varId, { existingCompanyId: amazon.id });
+  ok((await expRow(varId)).companyId === amazon.id, "mapping binds the experience to the existing company");
+  const [amazonAfter] = await db.select().from(s.companies).where(eq(s.companies.id, amazon.id));
+  ok(
+    amazonAfter.aliases.map((a) => a.toLowerCase()).includes("amzn"),
+    "the mapped spelling is folded in as an alias",
+  );
+  const varId2 = await submitExperienceCore(student1, form("Amzn"));
+  ok(
+    (await expRow(varId2)).companyId === amazon.id,
+    "the next submission of that spelling auto-binds — no second proposal",
+  );
+
+  // Taxonomy management (moderator-gated): add / rename-propagation / merge.
+  ok(
+    (await rejects(() => addCompanyCore(moderator, { name: "Amazon" }))).includes("already exists"),
+    "adding a duplicate company is rejected",
+  );
+  await addRoundTypeCore(moderator, "Pair Programming");
+  const ppId = await submitExperienceCore(
+    student1,
+    form("Amazon", {
+      rounds: [
+        { round: "Pair Programming", status: "Passed", detailed: false, platform: "", note: "", blocks: [] },
+      ],
+    }),
+  );
+  const [ppType] = await db.select().from(s.roundTypes).where(eq(s.roundTypes.label, "Pair Programming"));
+  await renameRoundTypeCore(moderator, ppType.id, "Pairing Round");
+  const ppRounds = await db.select().from(s.rounds).where(eq(s.rounds.experienceId, ppId));
+  ok(
+    ppRounds.length > 0 && ppRounds.every((r) => r.name === "Pairing Round"),
+    "renaming a round type propagates to existing rounds.name",
+  );
+
+  const acmeA = await addCompanyCore(moderator, { name: "Acme Labs" });
+  const acmeExp = await submitExperienceCore(student1, form("Acme Labs"));
+  ok((await expRow(acmeExp)).companyId === acmeA.id, "a submission binds to a just-added canonical company");
+  const acmeB = await addCompanyCore(moderator, { name: "Acme Corporation" });
+  const merged = await mergeCompaniesCore(moderator, acmeA.id, acmeB.id);
+  ok(merged.moved >= 1 && merged.target === "Acme Corporation", "merge reports moved count + target");
+  ok((await expRow(acmeExp)).companyId === acmeB.id, "merge repoints experiences to the target company");
+  ok(
+    (await db.select().from(s.companies).where(eq(s.companies.id, acmeA.id))).length === 0,
+    "the source company row is deleted after merge",
+  );
+  const [acmeBAfter] = await db.select().from(s.companies).where(eq(s.companies.id, acmeB.id));
+  ok(
+    acmeBAfter.aliases.map((a) => a.toLowerCase()).includes("acme labs"),
+    "the source name is folded into the target's aliases",
+  );
+
+  // Share-form options + Ops taxonomy reads.
+  const shareOpts = await getShareFormOptions();
+  ok(
+    shareOpts.roundTypes.includes("OA") && shareOpts.companies.some((c) => c.name === "Amazon"),
+    "getShareFormOptions exposes active round types + canonical companies",
+  );
+  ok(
+    shareOpts.topics.some((t) => t.label === "Sliding Window"),
+    "getShareFormOptions exposes the active topic taxonomy",
+  );
+  const [barRaiser] = await db.select().from(s.roundTypes).where(eq(s.roundTypes.label, "Bar Raiser"));
+  await setRoundTypeActiveCore(moderator, barRaiser.id, false);
+  ok(
+    !(await getShareFormOptions()).roundTypes.includes("Bar Raiser"),
+    "a deactivated round type drops out of the share-form list",
+  );
+  const opsCos = await listOpsCompanies("acme");
+  ok(opsCos.some((c) => c.name === "Acme Corporation"), "listOpsCompanies search matches by name/alias");
+  ok(
+    (await listOpsRoundTypes()).some((r) => r.label === "Pairing Round"),
+    "listOpsRoundTypes returns the managed round vocabulary",
+  );
 
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }

@@ -19,9 +19,6 @@ import {
   type SharePayload,
 } from "@/lib/validations/experience";
 
-const slugify = (x: string) =>
-  x.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-
 type Batchable = Parameters<typeof db.batch>[0][number];
 
 export class WriteError extends Error {} // safe to surface to the client
@@ -41,10 +38,30 @@ async function resolveTagIds(payload: SharePayload): Promise<Map<string, string>
   return map;
 }
 
-// Companies are student-named: match case-insensitively (name or alias),
-// create on first mention. Runs before the batch — an orphan company row from
-// a failed submission is harmless.
-async function resolveCompanyId(name: string): Promise<string> {
+// Canonical-round contract (concern #10): every round label must be an ACTIVE
+// round_types row. Students SELECT from the DB list, so an unknown label here
+// is tampering or a stale client — reject loudly. `rounds.name` then stores the
+// canonical label verbatim (kept in sync by the rename core in taxonomy.ts).
+async function assertRoundTypes(payload: SharePayload): Promise<void> {
+  const labels = [...new Set(payload.rounds.map((r) => r.round))];
+  if (labels.length === 0) return;
+  const rows = await db
+    .select({ label: s.roundTypes.label })
+    .from(s.roundTypes)
+    .where(and(inArray(s.roundTypes.label, labels), eq(s.roundTypes.isActive, true)));
+  const known = new Set(rows.map((r) => r.label));
+  const missing = labels.filter((l) => !known.has(l));
+  if (missing.length) throw new WriteError(`Unknown round type: ${missing[0]}`);
+}
+
+// Companies are NO LONGER auto-created (concern #10). Match case-insensitively
+// against the canonical list (name or alias); on a hit the experience binds to
+// that companyId. On a miss the typed name rides along as a PROPOSED name —
+// companyId stays NULL until a moderator resolves it during review (map to an
+// existing company = dedup, or promote to canonical). Ops is the single gate.
+type CompanyBinding = { companyId: string | null; proposedName: string | null };
+
+async function resolveCompany(name: string): Promise<CompanyBinding> {
   const [found] = await db
     .select({ id: s.companies.id })
     .from(s.companies)
@@ -53,18 +70,8 @@ async function resolveCompanyId(name: string): Promise<string> {
           or exists (select 1 from unnest(${s.companies.aliases}) alias
                      where lower(alias) = ${name.toLowerCase()})`,
     );
-  if (found) return found.id;
-  const slug = slugify(name);
-  const [bySlug] = await db
-    .select({ id: s.companies.id })
-    .from(s.companies)
-    .where(eq(s.companies.slug, slug));
-  if (bySlug) return bySlug.id;
-  const [created] = await db
-    .insert(s.companies)
-    .values({ name, slug })
-    .returning({ id: s.companies.id });
-  return created.id;
+  if (found) return { companyId: found.id, proposedName: null };
+  return { companyId: null, proposedName: name };
 }
 
 // Insert statements shared by create and edit: rounds → blocks → tag links →
@@ -147,9 +154,10 @@ export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): 
   if (!parsed.success) throw new WriteError(firstIssue(parsed.error));
   const payload = parsed.data;
 
-  const [tagId, companyId] = await Promise.all([
+  await assertRoundTypes(payload);
+  const [tagId, company] = await Promise.all([
     resolveTagIds(payload),
-    resolveCompanyId(payload.company),
+    resolveCompany(payload.company),
   ]);
 
   const expId = `exp-${nanoid(12)}`;
@@ -157,7 +165,8 @@ export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): 
     db.insert(s.experiences).values({
       id: expId,
       authorId: actor.id,
-      companyId,
+      companyId: company.companyId,
+      proposedCompanyName: company.proposedName,
       roleTitle: payload.role,
       year: payload.year,
       overallOutcome: payload.outcome,
@@ -192,9 +201,10 @@ export async function resubmitExperienceCore(
   if (!existing || existing.authorId !== actor.id) throw new WriteError("Post not found");
   if (existing.deletedAt) throw new WriteError("Restore this post before editing it");
 
-  const [tagId, companyId] = await Promise.all([
+  await assertRoundTypes(payload);
+  const [tagId, company] = await Promise.all([
     resolveTagIds(payload),
-    resolveCompanyId(payload.company),
+    resolveCompany(payload.company),
   ]);
 
   const now = new Date();
@@ -202,7 +212,8 @@ export async function resubmitExperienceCore(
     db
       .update(s.experiences)
       .set({
-        companyId,
+        companyId: company.companyId,
+        proposedCompanyName: company.proposedName,
         roleTitle: payload.role,
         year: payload.year,
         overallOutcome: payload.outcome,

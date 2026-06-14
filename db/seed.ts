@@ -7,7 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq, inArray, sql } from "drizzle-orm";
 import * as s from "../lib/db/schema";
-import { TOPIC_TAXONOMY } from "../lib/share-form";
+import { ROUND_TYPE_SEED, TOPIC_TAXONOMY } from "../lib/share-form";
 
 const db = drizzle(neon(process.env.DATABASE_URL!), { schema: s });
 
@@ -340,6 +340,7 @@ async function main() {
   await db.delete(s.roleChangeAudit);
   await db.delete(s.contentBlockTopicTags);
   await db.delete(s.topicTags);
+  await db.delete(s.roundTypes);
   await db.delete(s.companies);
   await db.delete(s.users);
 
@@ -370,6 +371,11 @@ async function main() {
     )
     .returning();
   const tagId = new Map(tagRows.map((t) => [t.label, t.id]));
+
+  console.log("Round types…");
+  await db.insert(s.roundTypes).values(
+    ROUND_TYPE_SEED.map((label, i) => ({ label, slug: slugify(label), position: i })),
+  );
 
   console.log("Experiences…");
   for (const e of EXPERIENCES) {
@@ -447,7 +453,12 @@ async function main() {
   const [{ count: tagCount }] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(s.topicTags);
-  console.log(`Done: ${expCount} experiences, ${blockCount} blocks, ${tagCount} tags.`);
+  const [{ count: roundTypeCount }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(s.roundTypes);
+  console.log(
+    `Done: ${expCount} experiences, ${blockCount} blocks, ${tagCount} tags, ${roundTypeCount} round types.`,
+  );
 }
 
 main().then(

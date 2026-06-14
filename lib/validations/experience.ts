@@ -1,19 +1,20 @@
 // Zod schema for the share-form submission payload (Server Action input).
 // Mirrors the localStorage draft types in lib/draft.ts 1:1 — the client sends
 // its ShareDraftForm verbatim; we sanitize (trim, drop empty tips/blocks) and
-// then validate. Topic tags are CURATED ONLY: the schema admits nothing
-// outside TOPIC_TAXONOMY, and the action layer re-resolves labels against the
-// live topic_tags table (the real contract) before writing links.
+// then validate. Canonical-vocabulary membership (topic tags, round types) is
+// NOT checked here: it lives in the write cores, which re-resolve every label
+// against the ACTIVE DB rows (topic_tags / round_types) — the single source of
+// truth, so Ops-added entries work the instant they exist. Zod only guards
+// shape and length. Company likewise can be a not-yet-canonical (proposed)
+// name; the moderator resolves it during review.
 import { z } from "zod";
 import type { ShareDraftForm } from "@/lib/draft";
-import { OUTCOMES, ROUND_STATUSES, TOPIC_TAXONOMY, wordCount } from "@/lib/share-form";
-
-const CURATED_LABELS = TOPIC_TAXONOMY.map((t) => t.label) as [string, ...string[]];
+import { OUTCOMES, ROUND_STATUSES, wordCount } from "@/lib/share-form";
 
 const blockSchema = z.object({
   type: z.enum(["coding", "system_design", "behavioral", "open"]),
   prompt: z.string().trim().min(1, "Every block needs its question/prompt").max(2000),
-  topics: z.array(z.enum(CURATED_LABELS)).max(8),
+  topics: z.array(z.string().trim().min(1).max(60)).max(8),
   difficulty: z.number().int().min(1).max(5).nullable(),
   detail: z.string().trim().max(2000),
 });

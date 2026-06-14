@@ -61,16 +61,16 @@ export async function resubmitWithdrawnCore(actor: DbUser, expId: string): Promi
       experienceId: expId,
     }),
   ]);
-  // Same "it's in the queue" email as any other (re)submission (Flow D).
-  const [company] = await db
-    .select({ name: s.companies.name })
-    .from(s.companies)
-    .where(eq(s.companies.id, exp.companyId));
+  // Same "it's in the queue" email as any other (re)submission (Flow D). The
+  // company may still be a proposed (not-yet-canonical) name — fall back to it.
+  const [company] = exp.companyId
+    ? await db.select({ name: s.companies.name }).from(s.companies).where(eq(s.companies.id, exp.companyId))
+    : [];
   await dispatchStatus({
     to: actor.sstEmail,
     ...statusEmailContent("under_review", {
       authorName: actor.name,
-      company: company?.name ?? "your",
+      company: company?.name ?? exp.proposedCompanyName ?? "your",
       role: exp.roleTitle,
       expId,
     }),

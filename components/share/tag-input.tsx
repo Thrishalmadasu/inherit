@@ -1,19 +1,21 @@
 "use client";
 
 // Curated-taxonomy topic picker. Per the PRD, students tag ONLY from the
-// controlled vocabulary: typing filters the taxonomy; Enter adds the top
-// match; suggestion chips add with one click. Free text is never stored.
+// controlled vocabulary (concern #10): typing filters the canonical taxonomy
+// (DB-sourced, passed in as `taxonomy`); Enter adds the top match; suggestion
+// chips add with one click. Free text is never stored.
 import { useMemo, useState } from "react";
-import { TOPIC_TAXONOMY } from "@/lib/share-form";
 
 export function TagInput({
   value,
   onChange,
+  taxonomy,
   suggestions,
   placeholder = "Type to search topics…",
 }: {
   value: string[];
   onChange: (tags: string[]) => void;
+  taxonomy: { label: string; category: string }[];
   suggestions: string[];
   placeholder?: string;
 }) {
@@ -22,10 +24,10 @@ export function TagInput({
   const matches = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return [];
-    return TOPIC_TAXONOMY.filter(
-      (tag) => tag.label.toLowerCase().includes(t) && !value.includes(tag.label),
-    ).slice(0, 6);
-  }, [q, value]);
+    return taxonomy
+      .filter((tag) => tag.label.toLowerCase().includes(t) && !value.includes(tag.label))
+      .slice(0, 6);
+  }, [q, value, taxonomy]);
 
   const add = (label: string) => {
     if (!value.includes(label)) onChange([...value, label]);

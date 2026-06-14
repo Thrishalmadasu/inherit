@@ -105,14 +105,32 @@ export const companies = pgTable("companies", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Canonical pipeline-round vocabulary (concern #10 — no duplicate rounds). Ops-
+// managed exactly like topic_tags: students SELECT from this list in the share
+// form; only Ops adds/renames. `rounds.name` stores the canonical label, kept
+// in sync by the rename core. `position` orders the share-form dropdown.
+export const roundTypes = pgTable("round_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  label: text("label").notNull(),
+  slug: text("slug").notNull().unique(),
+  position: integer("position").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const experiences = pgTable("experiences", {
   id: text("id").primaryKey(), // seeded "exp-019"-style; nanoid for new rows
   authorId: uuid("author_id")
     .notNull()
     .references(() => users.id),
-  companyId: uuid("company_id")
-    .notNull()
-    .references(() => companies.id),
+  // Nullable: a submission naming a company NOT in the canonical list rides as
+  // a PROPOSED name (companyId NULL, proposedCompanyName set) until a moderator
+  // resolves it during review — map to an existing company (dedup) or promote
+  // to canonical. Auto-creation is gone (concern #10 — Ops is the single gate).
+  // Every approved/visible experience has companyId set (approval requires it).
+  companyId: uuid("company_id").references(() => companies.id),
+  proposedCompanyName: text("proposed_company_name"),
   roleTitle: text("role_title").notNull(),
   year: integer("year").notNull(),
   overallOutcome: overallOutcome("overall_outcome").notNull(),

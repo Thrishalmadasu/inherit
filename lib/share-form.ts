@@ -8,16 +8,14 @@ import type {
   ShareDraftForm,
 } from "@/lib/draft";
 
-export const COMPANY_SUGGESTIONS = [
-  { name: "Amazon", industry: "E-commerce · Cloud" },
-  { name: "Microsoft", industry: "Cloud · Productivity" },
-  { name: "Google", industry: "Search · Cloud" },
-  { name: "Atlassian", industry: "Developer tools" },
-  { name: "Razorpay", industry: "Fintech" },
-  { name: "Zomato", industry: "Consumer · Logistics" },
-  { name: "Sprinklr", industry: "CX SaaS" },
-  { name: "Walmart Global Tech", industry: "Retail · E-commerce" },
-];
+// Companies and round types are now sourced from the canonical DB tables
+// (concern #10), passed into the share form as props — there is no static
+// company/round list to drift. `ShareFormOptions` is the server→form contract.
+export interface ShareFormOptions {
+  companies: { name: string; industry: string }[];
+  roundTypes: string[];
+  topics: { label: string; category: string }[];
+}
 
 export const ROLE_SUGGESTIONS = [
   { name: "SDE Intern", hint: "Software" },
@@ -36,15 +34,20 @@ export const YEARS = [2026, 2025, 2024, 2023];
 
 export const OUTCOMES = ["Offer", "Shortlisted", "Awaiting", "Rejected", "Withdrew"] as const;
 
-export const PIPELINE_ROUNDS = [
+// Canonical pipeline-round vocabulary seeded into the `round_types` table.
+// Order = display order in the share-form dropdown. Ops can add/rename more
+// in-app (mirror topics); students only ever SELECT from the DB list.
+export const ROUND_TYPE_SEED = [
   "OA",
+  "Aptitude",
+  "Group Discussion",
   "Tech 1",
   "Tech 2",
   "System Design",
+  "Hiring Manager",
   "Behavioral",
-  "HR",
-  "Managerial",
   "Bar Raiser",
+  "HR",
 ] as const;
 
 export const ROUND_STATUSES = ["Passed", "Failed", "Awaiting"] as const;

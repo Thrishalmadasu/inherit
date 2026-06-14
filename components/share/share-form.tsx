@@ -22,7 +22,6 @@ import {
   type ShareDraftForm,
 } from "@/lib/draft";
 import {
-  COMPANY_SUGGESTIONS,
   OUTCOMES,
   ROLE_SUGGESTIONS,
   STEPS,
@@ -31,6 +30,7 @@ import {
   emptyForm,
   emptyRound,
   wordCount,
+  type ShareFormOptions,
 } from "@/lib/share-form";
 import { submitExperience } from "@/app/actions/experiences";
 import { firstIssue, sanitizeShareForm, sharePayloadSchema } from "@/lib/validations/experience";
@@ -44,10 +44,12 @@ export function ShareForm({
   editId,
   prefill,
   editStatus,
+  options,
 }: {
   editId?: string;
   prefill?: ShareDraftForm; // DB state of the post being edited (server-loaded)
   editStatus?: ReviewStatus;
+  options: ShareFormOptions; // canonical companies / round types / topics (DB)
 }) {
   const router = useRouter();
   const draftKey = editId ? editDraftKey(editId) : DRAFT_KEY;
@@ -164,8 +166,8 @@ export function ShareForm({
           </div>
         )}
 
-        {step === 0 && <StepBasics form={form} update={update} />}
-        {step === 1 && <StepRounds form={form} update={update} />}
+        {step === 0 && <StepBasics form={form} update={update} options={options} />}
+        {step === 1 && <StepRounds form={form} update={update} options={options} />}
         {step === 2 && <StepTips form={form} update={update} />}
         {step === 3 && <StepReflections form={form} update={update} />}
         {step === 4 && <StepIdentity form={form} update={update} />}
@@ -205,9 +207,11 @@ export function ShareForm({
 function StepBasics({
   form,
   update,
+  options,
 }: {
   form: ShareDraftForm;
   update: (p: Partial<ShareDraftForm>) => void;
+  options: ShareFormOptions;
 }) {
   const [tipsOpen, setTipsOpen] = useState(false);
   return (
@@ -253,7 +257,8 @@ function StepBasics({
         value={form.company}
         onChange={(company) => update({ company })}
         placeholder="Start typing — e.g. Amazon"
-        options={COMPANY_SUGGESTIONS.map((c) => ({ main: c.name, sub: c.industry }))}
+        options={options.companies.map((c) => ({ main: c.name, sub: c.industry }))}
+        hint="Pick from the list where you can. A new company is reviewed by Ops before it's added."
       />
       <Combo
         label="Role"
@@ -309,9 +314,11 @@ function StepBasics({
 function StepRounds({
   form,
   update,
+  options,
 }: {
   form: ShareDraftForm;
   update: (p: Partial<ShareDraftForm>) => void;
+  options: ShareFormOptions;
 }) {
   const setRound = (i: number, next: (typeof form.rounds)[number]) =>
     update({ rounds: form.rounds.map((r, j) => (j === i ? next : r)) });
@@ -357,6 +364,8 @@ function StepRounds({
             round={r}
             idx={i}
             total={form.rounds.length}
+            roundTypes={options.roundTypes}
+            topics={options.topics}
             onChange={(next) => setRound(i, next)}
             onMove={(dir) => move(i, dir)}
             onDelete={
@@ -369,7 +378,9 @@ function StepRounds({
       </div>
 
       <Button
-        onClick={() => update({ rounds: [...form.rounds, emptyRound("Tech 1")] })}
+        onClick={() =>
+          update({ rounds: [...form.rounds, emptyRound(options.roundTypes[1] ?? options.roundTypes[0])] })
+        }
         className="mt-3"
       >
         <Icon.plus /> Add round
@@ -658,18 +669,24 @@ function Combo({
   onChange,
   placeholder,
   options,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   options: { main: string; sub: string }[];
+  hint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const matches = useMemo(() => {
     const t = value.trim().toLowerCase();
     const list = t ? options.filter((o) => o.main.toLowerCase().includes(t)) : options;
     return list.slice(0, 6);
+  }, [value, options]);
+  const isNew = useMemo(() => {
+    const t = value.trim().toLowerCase();
+    return t.length > 0 && !options.some((o) => o.main.toLowerCase() === t);
   }, [value, options]);
 
   return (
@@ -707,6 +724,17 @@ function Combo({
             </button>
           ))}
         </div>
+      )}
+      {hint && (
+        <span className="text-[11.5px] leading-[1.5] text-fg-3">
+          {isNew ? (
+            <span className="text-amber">
+              “{value.trim()}” isn&apos;t in our list yet — Ops will confirm or match it during review.
+            </span>
+          ) : (
+            hint
+          )}
+        </span>
       )}
     </label>
   );

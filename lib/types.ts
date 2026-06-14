@@ -141,6 +141,9 @@ export interface OpsQueueItem {
   realAuthor: { name: string; batch: string; email: string };
   bylineAs: "real" | "anonymous";
   company: string;
+  // Set only when the named company isn't canonical yet — the moderator must
+  // resolve it (map to existing / promote) before this post can be approved.
+  proposedCompany?: string | null;
   role: string;
   round: string;
   outcome: Outcome;

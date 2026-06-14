@@ -10,10 +10,12 @@ import {
   approveCore,
   hideCore,
   rejectCore,
+  resolveExperienceCompanyCore,
   suggestEditsCore,
   unhideCore,
+  type CompanyResolution,
 } from "@/lib/write/moderation";
-import { runAction, type ActionResult } from "@/lib/write/run";
+import { runActionData, runAction, type ActionDataResult, type ActionResult } from "@/lib/write/run";
 
 export async function approveExperience(expId: string): Promise<ActionResult> {
   const actor = await requireOps();
@@ -24,6 +26,17 @@ export async function approveExperience(expId: string): Promise<ActionResult> {
   // needs a request scope — the invariant test calls the sync directly.
   if (result.ok) after(() => syncPublishedExperience(expId));
   return result;
+}
+
+// Resolve a proposed company during review (concern #10) — map to an existing
+// canonical company or promote it. Any Ops user can do this (it's part of the
+// review), like approve/suggest/reject.
+export async function resolveExperienceCompany(
+  expId: string,
+  resolution: CompanyResolution,
+): Promise<ActionDataResult<{ companyName: string }>> {
+  const actor = await requireOps();
+  return runActionData(() => resolveExperienceCompanyCore(actor, expId, resolution));
 }
 
 export async function suggestEdits(expId: string, note: string): Promise<ActionResult> {

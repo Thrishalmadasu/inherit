@@ -43,13 +43,6 @@ export function UsersView({
 
   return (
     <>
-      {!canManage && (
-        <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] leading-[1.55] text-fg-2">
-          You can view roles here, but only <b className="text-fg">super admins</b> can
-          change them.
-        </div>
-      )}
-
       <form
         onSubmit={(e) => {
           e.preventDefault();

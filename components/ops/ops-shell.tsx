@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
+import { useViewer } from "@/lib/viewer";
 import { cn } from "@/lib/cn";
 
 // Ops chrome (client). Access is gated server-side in app/ops/layout.tsx,
@@ -16,11 +17,15 @@ export function OpsShell({
   pendingCount: number;
 }) {
   const pathname = usePathname();
+  const viewer = useViewer();
+  // The Users tab is super-admin only (role/user management); moderators don't
+  // see it. The page itself redirects non-super-admins as the authoritative gate.
+  const isSuperAdmin = viewer?.role === "super_admin";
   const TABS = [
     { href: "/ops/queue", label: "Moderation queue", count: pendingCount },
     { href: "/ops/invite", label: "Invite to share" },
     { href: "/ops/taxonomy", label: "Companies & topics" },
-    { href: "/ops/users", label: "Users" },
+    ...(isSuperAdmin ? [{ href: "/ops/users", label: "Users" }] : []),
   ];
   return (
     <>

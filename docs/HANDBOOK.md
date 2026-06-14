@@ -28,7 +28,7 @@ next person interviewing at a company walks in with the batch's collective intel
 | Read paths (dashboard, companies, company, experience, feed, search) | ✅ **Real DB** | funnel + topics computed from rows |
 | Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ **Live** | submits via Server Action; drafts still localStorage |
 | My Posts / Under Review / Ops queue | ✅ **Real DB** | tabs, statuses, FIFO queue, all actions write rows |
-| Ops users tab + role management | ✅ **Real DB** | paginated + searchable user table; super-admin-only promote/demote (`app/actions/roles.ts` → `lib/write/roles.ts`), last-super-admin lockout guard, `role_change_audit` trail; bootstrap via `SUPER_ADMIN_EMAILS` (§9) |
+| Ops users tab + role management | ✅ **Real DB** | **super-admin ONLY** — the `/ops/users` page redirects non-super-admins and the nav tab is hidden from moderators; paginated + searchable user table; super-admin-only promote/demote (`app/actions/roles.ts` → `lib/write/roles.ts`), last-super-admin lockout guard, `role_change_audit` trail; bootstrap via `SUPER_ADMIN_EMAILS` (§9) |
 | Canonical entities — companies / round types / topics (no dupes, #10) | ✅ **Real DB** | share form SELECTs from the canonical DB lists (`getShareFormOptions`); a new company rides as a proposal resolved at review (no auto-create); `/ops/taxonomy` admin (add/rename/alias/merge companies; add/rename/activate round types + topics) — `lib/write/taxonomy.ts`, moderator-gated |
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
@@ -89,7 +89,8 @@ web/
 │  ├─ actions/                # ★ Server Action endpoints ("use server"): thin
 │  │                          #   auth wrappers around lib/write/* cores
 │  └─ ops/                    # layout = DB-role ∪ OPS_EMAILS gate; queue, invite,
-│                             #   users, taxonomy (#10 canonical-entity admin) — all real
+│                             #   taxonomy (#10 canonical-entity admin) — all real;
+│                             #   users tab is super-admin ONLY (moderators redirected)
 ├─ components/
 │  ├─ ui/                     # primitive layer: pill, button, chip, stat-card,
 │  │                          #   funnel, topics-list, experience-card, select, modal
@@ -356,7 +357,7 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 | Share form | drafts in **localStorage**; `?edit=` prefill from **Neon** | Submit/Resubmit = real (`submitExperience`) |
 | My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
-| Ops users tab | **Neon** | super-admin-only role change (real, audited) |
+| Ops users tab | **Neon** | **super-admin ONLY** (page redirects moderators, nav hides the tab); role change real + audited |
 | Ops taxonomy tab (`/ops/taxonomy`) | **Neon** | companies / round types / topics — add/rename/alias/merge/activate (real, moderator-gated, `lib/write/taxonomy.ts`) |
 | Share form vocabularies | **Neon** (`getShareFormOptions`) | company typeahead + round `<select>` + topic tags all SELECT canonical DB rows; unmatched company = proposal resolved at review |
 | Ops invite tab | **Neon** (campaign + recipient rows = audit trail; **no dedupe** — every valid row sends) | Send = real (`sendInvites`); recipients from CSV upload AND/OR the manual add-recipient form (both re-validated server-side by `classifyRecipient`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
@@ -496,7 +497,10 @@ npx vercel deploy --prod --yes   # deploy
      `role_change_audit` trail (`listRecentRoleChanges`). Bootstrap via
      `SUPER_ADMIN_EMAILS` (§9), which `ensureDbUser` writes THROUGH to the DB on
      sign-in (self-healing — DB stays the single source of truth, env removable
-     after first sign-in). Verified by 10 new harness assertions.
+     after first sign-in). Verified by 10 new harness assertions. **Access is
+     super-admin ONLY (2026-06-14):** the `/ops/users` page redirects
+     non-super-admins to the queue and the nav tab is hidden from moderators —
+     user/role management isn't a moderator concern.
    - ✅ **Ops-nav gap closed:** `ensureDbUser` now resolves the users row every
      request (one cheap indexed read; the slow Clerk metadata write stays gated) and
      sources `viewer.isOps` from the DB role (`isOpsUser`), so a moderator promoted

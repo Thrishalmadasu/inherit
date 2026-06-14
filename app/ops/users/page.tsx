@@ -1,22 +1,26 @@
+import { redirect } from "next/navigation";
 import { isSuperAdmin, requireDbUser } from "@/lib/auth";
 import { listOpsUsers, listRecentRoleChanges } from "@/lib/db/queries";
 import { UsersView } from "@/components/ops/users-view";
 
 export const dynamic = "force-dynamic";
 
-// Super-Admin user management. The page renders for any Ops user (so they can
-// see who holds what), but role changes are gated to super admins - the role
-// <Select> is disabled otherwise and the Server Action re-checks regardless.
+// Super-Admin ONLY. Role/user management is a super-admin concern, so a
+// moderator can't even view this tab - they're redirected to the queue (the
+// nav also hides the link, and changeUserRole re-checks via requireSuperAdmin).
 export default async function OpsUsersPage(props: PageProps<"/ops/users">) {
+  const viewer = await requireDbUser();
+  if (!isSuperAdmin(viewer)) redirect("/ops/queue");
+
   const sp = await props.searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const page = typeof sp.page === "string" ? Math.max(1, Number.parseInt(sp.page, 10) || 1) : 1;
 
-  const [viewer, data, audit] = await Promise.all([
-    requireDbUser(),
+  const [data, audit] = await Promise.all([
     listOpsUsers({ q, page }),
     listRecentRoleChanges(),
   ]);
 
-  return <UsersView canManage={isSuperAdmin(viewer)} q={q} data={data} audit={audit} />;
+  // Only super admins reach here, so management is always enabled.
+  return <UsersView canManage q={q} data={data} audit={audit} />;
 }

@@ -10,10 +10,7 @@ export default function SignUpPage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-6 py-16">
       <header className="flex flex-col items-center text-center">
         <BrandMark className="mb-4 size-14" priority />
-        <h1 className="mb-1.5 text-[26px] font-bold tracking-[-0.02em]">SST Inherit</h1>
-        <p className="max-w-[380px] text-sm leading-[1.6] text-fg-2">
-          Built by a senior, for the batches that follow.
-        </p>
+        <h1 className="text-[26px] font-bold tracking-[-0.02em]">SST Inherit</h1>
       </header>
 
       <SignUp path="/sign-up" />

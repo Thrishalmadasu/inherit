@@ -32,7 +32,7 @@ next person interviewing at a company walks in with the batch's collective intel
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
-| Invite-to-share (CSV outreach) | ✅ **Live** (send-only V1) | PRD §7 Flow F; per-recipient sent/failed statuses from real dispatch results |
+| Invite-to-share (CSV + manual outreach) | ✅ **Live** (send-only V1) | PRD §7 Flow F; CSV upload AND a manual add-recipient form (`classifyRecipient` validates both identically; merged into one campaign); per-recipient sent/failed statuses from real dispatch results |
 | Email (Resend) | ✅ **Code live** (Session 5) | `lib/email/` seam: review-status emails (Flow D) + invite batch dispatch; **runs as console stub until `RESEND_API_KEY` + DNS land** (§9) |
 | L&D Sheets sync | ✅ **Code live** (Session 5) | `lib/sheets/` seam: Technical+Behavioral rows appended async on first publish; **console stub until service-account key + sheet id land** (§9) |
 
@@ -355,7 +355,7 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 | Ops users tab | **Neon** | super-admin-only role change (real, audited) |
 | Ops taxonomy tab (`/ops/taxonomy`) | **Neon** | companies / round types / topics — add/rename/alias/merge/activate (real, moderator-gated, `lib/write/taxonomy.ts`) |
 | Share form vocabularies | **Neon** (`getShareFormOptions`) | company typeahead + round `<select>` + topic tags all SELECT canonical DB rows; unmatched company = proposal resolved at review |
-| Ops invite tab | **Neon** (campaign + recipient rows = audit trail; **no dedupe** — every valid row sends) | Send = real (`sendInvites`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
+| Ops invite tab | **Neon** (campaign + recipient rows = audit trail; **no dedupe** — every valid row sends) | Send = real (`sendInvites`); recipients from CSV upload AND/OR the manual add-recipient form (both re-validated server-side by `classifyRecipient`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
 | Notifications | **rows written** on every transition | no bell UI yet; **emails real** for the four review transitions (under review / live / needs edits / rejected) via `lib/email`, best-effort after the batch commits |
 | L&D sheet | `sheet_synced_at` stamp on experiences | append fired by `after()` in the approve action → `lib/sheets.syncPublishedExperience` (async, 3 attempts, never blocks/fails publish); Google driver when SA key + sheet id set, stub otherwise |
 
@@ -376,7 +376,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 115-assertion write-loop + engagement + invite + email/sheets + roles + canonical-entity (#10) invariant test (real DB!) —
+                     # 118-assertion write-loop + engagement + invite (CSV+manual) + email/sheets + roles + canonical-entity (#10) invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -538,9 +538,12 @@ npx vercel deploy --prod --yes   # deploy
      (add/rename/alias/**merge** companies; add/rename/activate round types + topics) in
      `lib/write/taxonomy.ts`, moderator-gated. Read layer left-joins companies + null-safe
      mapping; visible surfaces unchanged. +23 harness assertions (115 total).
-   - **Still TODO from this triage (priority order):** (a) daily moderator report email;
-     (b) manual add-recipient UI in invite. Full backlog lives in the assistant's project
-     memory.
+   - ✅ **Manual add-recipient in invite (#8, done):** the invite tab takes recipients from a
+     CSV upload AND a manual add-recipient form (name/email/company/role/round). Manual rows are
+     carried as a structured list and re-validated server-side by the SAME `classifyRecipient`
+     used for CSV rows (client untrusted), then merged into one campaign. +3 harness assertions.
+   - **Still TODO from this triage:** daily moderator report email (received vs reviewed). Full
+     backlog lives in the assistant's project memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.

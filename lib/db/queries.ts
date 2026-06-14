@@ -4,7 +4,7 @@
 //
 // Rows are mapped to the shared DTO shapes (lib/types.ts) so the client
 // views stay unchanged.
-import { and, asc, desc, eq, inArray, isNull, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, max, ne, type SQL } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import type {
   CompanyListItem,
@@ -44,14 +44,19 @@ type Loaded = {
   tips: (typeof s.prepTips.$inferSelect)[];
 };
 
-async function loadWhere(where: SQL | undefined, orderBy: SQL): Promise<Loaded[]> {
-  const exps = await db
+async function loadWhere(
+  where: SQL | undefined,
+  orderBy: SQL,
+  limit?: number,
+): Promise<Loaded[]> {
+  const base = db
     .select()
     .from(s.experiences)
     .innerJoin(s.companies, eq(s.experiences.companyId, s.companies.id))
     .innerJoin(s.users, eq(s.experiences.authorId, s.users.id))
     .where(where)
     .orderBy(orderBy);
+  const exps = await (limit != null ? base.limit(limit) : base);
   if (exps.length === 0) return [];
 
   const ids = exps.map((r) => r.experiences.id);
@@ -190,21 +195,31 @@ const blockTypeLabel = (t: string) =>
 
 // ── Public queries ───────────────────────────────────────────────────────────
 export async function listCompanies(): Promise<CompanyListItem[]> {
-  const [companies, visible] = await Promise.all([
+  // Per-company count + latest publish date aggregated in SQL (GROUP BY) —
+  // no experience hydration, no full-corpus scan.
+  const [companies, stats] = await Promise.all([
     db.select().from(s.companies).orderBy(s.companies.name),
-    loadVisible(),
+    db
+      .select({
+        companyId: s.experiences.companyId,
+        count: count(),
+        latest: max(s.experiences.publishedAt),
+      })
+      .from(s.experiences)
+      .where(visibleExp)
+      .groupBy(s.experiences.companyId),
   ]);
+  const byCompany = new Map(stats.map((r) => [r.companyId, r]));
   return companies
     .map((c) => {
-      const exps = visible.filter((l) => l.company.id === c.id);
-      const latest = exps[0]?.exp.publishedAt ?? null;
+      const stat = byCompany.get(c.id);
       return {
         slug: c.slug,
         name: c.name,
         industry: c.industry ?? "",
-        count: exps.length,
+        count: stat?.count ?? 0,
         active: false, // recruiting status is a deferred feature (V1)
-        lastDays: daysSince(latest),
+        lastDays: daysSince(stat?.latest ?? null),
       };
     })
     .sort((a, b) => b.count - a.count);
@@ -229,7 +244,10 @@ export interface CompanyPageData {
 export async function getCompanyPage(slug: string): Promise<CompanyPageData | null> {
   const [company] = await db.select().from(s.companies).where(eq(s.companies.slug, slug));
   if (!company) return null;
-  const visible = (await loadVisible()).filter((l) => l.company.id === company.id);
+  const visible = await loadWhere(
+    and(visibleExp, eq(s.experiences.companyId, company.id)),
+    desc(s.experiences.publishedAt),
+  );
 
   // Funnel: count experiences reaching each round label, ordered by avg position.
   const roundAgg = new Map<string, { count: number; posSum: number }>();
@@ -281,13 +299,15 @@ export async function getCompanyPage(slug: string): Promise<CompanyPageData | nu
 export async function getExperience(
   id: string,
 ): Promise<{ exp: Experience; related: Experience[]; company: { name: string; slug: string; industry: string } } | null> {
-  const visible = await loadVisible();
-  const found = visible.find((l) => l.exp.id === id);
+  const [found] = await loadWhere(and(visibleExp, eq(s.experiences.id, id)), desc(s.experiences.publishedAt));
   if (!found) return null;
-  const related = visible
-    .filter((l) => l.company.id === found.company.id && l.exp.id !== id)
-    .slice(0, 4)
-    .map(toCard);
+  // ≤4 related from the same company — scoped in SQL, not a full-corpus scan.
+  const relatedRows = await loadWhere(
+    and(visibleExp, eq(s.experiences.companyId, found.company.id), ne(s.experiences.id, id)),
+    desc(s.experiences.publishedAt),
+    4,
+  );
+  const related = relatedRows.map(toCard);
   return {
     exp: toDetail(found),
     related,
@@ -304,7 +324,8 @@ export async function listFeed(): Promise<Experience[]> {
 }
 
 export async function latestExperiences(n: number): Promise<Experience[]> {
-  return (await loadVisible()).slice(0, n).map(toCard);
+  const rows = await loadWhere(visibleExp, desc(s.experiences.publishedAt), n);
+  return rows.map(toCard);
 }
 
 // ── Engagement reads (Session 3) ─────────────────────────────────────────────

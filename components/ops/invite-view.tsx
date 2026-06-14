@@ -336,6 +336,9 @@ function DropZone({
     const reader = new FileReader();
     reader.onload = () => onCsv(String(reader.result), file.name);
     reader.readAsText(file);
+    // Reset the input so re-selecting the SAME file fires onChange again —
+    // Ops re-uploads the same CSV to retry failed rows after a send.
+    if (inputRef.current) inputRef.current.value = "";
   };
 
   if (hasFile) {

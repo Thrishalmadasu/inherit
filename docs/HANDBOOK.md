@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-12** after Session 5 (Resend email + L&D Sheets sync, both behind interfaces).
+> Living document. Last updated **2026-06-14** — pre-launch pass: read-path perf (full-corpus scans removed) + invite CSV re-upload fix. Prior: Session 5 (Resend email + L&D Sheets sync, both behind interfaces).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -445,6 +445,29 @@ npx vercel deploy --prod --yes   # deploy
      clean chance to shed them. Nothing writes them and no rows reference them. This
      is the only known stale artifact in the codebase (left by the 2026-06-13 invite
      dedupe removal).
+
+7. **Pre-launch pass (2026-06-14, partial)** — triage of pre-launch concerns; this
+   batch deployed (`f402897`):
+   - **Read-path perf:** every list page used to load the *entire* published corpus
+     (full object graph via `loadWhere`) and filter/slice in JS. Fixed the hot paths
+     to scope in SQL — `getExperience` fetches by id + a `LIMIT 4` related set,
+     `latestExperiences` pushes `LIMIT n`, `getCompanyPage` scopes by `companyId`,
+     and `listCompanies` counts via a single `GROUP BY` (count + max, no hydration).
+     `loadWhere` gained an optional `limit`. Behavior-preserving (same `visibleExp`
+     invariant + ordering); verified by `verify-write-loop.ts` (79) + a read-path
+     equivalence check.
+   - **Invite CSV re-upload fix:** the file `<input>` now resets its `.value` after
+     each read, so re-uploading the SAME CSV (how Ops retries failed rows) fires
+     `onChange` again instead of silently no-op'ing until a reload.
+   - **Still TODO from this triage (priority order):** (a) **role model** — the Ops
+     users tab is still a hardcoded mock; make DB roles real, `super_admin`-only role
+     grants, and gate destructive actions (hide) to `moderator`+ so student-ops can't
+     fat-finger; (b) **Tier-3 pagination** — `listFeed` (feed + search) is still
+     unbounded; needs keyset pagination + UI, folded together with a real
+     paginated/searchable Ops users + queue table; (c) hide-button on every post but
+     de-emphasized; (d) company/topic dedup design (companies are free-text
+     auto-created → dup risk); (e) daily moderator report email; (f) manual
+     add-recipient UI in invite. Full backlog lives in the assistant's project memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.

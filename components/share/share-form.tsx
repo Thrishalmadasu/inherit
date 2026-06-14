@@ -61,22 +61,29 @@ export function ShareForm({
     if (prefill) return prefill;
     return emptyForm();
   });
-  const [step, setStep] = useState(0);
+  // Resume on the step the user left off (saved with the draft), clamped to a
+  // valid range in case STEPS changed or the stored value is stale.
+  const [step, setStep] = useState(() => {
+    const saved = loadDraft(draftKey)?.step ?? 0;
+    return Math.min(Math.max(saved, 0), STEPS.length - 1);
+  });
   const [submitting, setSubmitting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  // Debounced autosave — only after the user actually touches the form.
+  // Debounced autosave — only after the user actually touches the form. Persist
+  // the current step too, so a mid-fill reload resumes in place (re-runs on
+  // step changes, not just field edits).
   const dirtyRef = useRef(false);
   const startedAtRef = useRef(Date.now());
   useEffect(() => {
     if (!dirtyRef.current) return;
     const t = setTimeout(() => {
       const now = Date.now();
-      saveDraft({ form, startedAt: startedAtRef.current, savedAt: now }, draftKey);
+      saveDraft({ form, step, startedAt: startedAtRef.current, savedAt: now }, draftKey);
       setSavedAt(now);
     }, 500);
     return () => clearTimeout(t);
-  }, [form, draftKey]);
+  }, [form, step, draftKey]);
 
   const update = (patch: Partial<ShareDraftForm>) => {
     dirtyRef.current = true;

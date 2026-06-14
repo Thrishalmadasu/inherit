@@ -45,6 +45,7 @@ export interface ShareDraftForm {
 
 export interface ShareDraft {
   form: ShareDraftForm;
+  step?: number; // wizard step the user was on, so a reload resumes in place
   startedAt: number;
   savedAt: number;
 }

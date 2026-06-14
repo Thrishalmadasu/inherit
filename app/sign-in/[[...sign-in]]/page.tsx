@@ -3,7 +3,7 @@ import { SignIn } from "@clerk/nextjs";
 import { Icon } from "@/components/icons";
 import { BrandMark } from "@/components/brand";
 
-export const metadata: Metadata = { title: "Sign in - SST Inherit" };
+export const metadata: Metadata = { title: "SST Inherit" };
 
 export default function SignInPage() {
   return (

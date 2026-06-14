@@ -10,6 +10,7 @@
 // with a valid email sends — duplicates and re-runs included.
 import { useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
+import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Chip } from "@/components/ui/primitives";
@@ -766,9 +767,7 @@ function EmailPreview({
       </div>
       <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
         <div className="flex items-center gap-2.5 border-b border-border bg-bg-2 px-4 py-3">
-          <span className="grid size-7 place-items-center rounded-[8px] bg-gradient-to-b from-blue to-blue-deep text-[13px] font-bold text-white shadow-[0_0_14px_-4px_var(--color-blue-glow)]">
-            I
-          </span>
+          <BrandMark className="size-7" />
           <div>
             <div className="text-[12.5px] font-semibold text-fg">{FROM_NAME}</div>
             <div className={cn("mt-px text-[11px] text-fg-3", MONO)}>{FROM_ADDRESS}</div>

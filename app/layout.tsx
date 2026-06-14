@@ -13,7 +13,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Inherit — SST Placement Intelligence",
+  title: "SST Inherit — Placement Intelligence",
   description:
     "What current students leave behind for the batches that follow. Every OA, interview, and offer your batchmates have been through, searchable in one place.",
 };

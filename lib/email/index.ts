@@ -10,7 +10,7 @@
 // inside function bodies, never at module init, so ESM resolves it cleanly.)
 import { resendSender } from "./resend";
 
-export const FROM_NAME = "Placement Ops · Inherit";
+export const FROM_NAME = "Placement Ops · SST Inherit";
 
 // Sender address. The subdomain is pending the Ops DNS decision (PRD §15 Q4),
 // so it's a NEXT_PUBLIC_ env override: locking it needs no code change, and

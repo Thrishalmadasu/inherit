@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
+import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { UserMenu } from "@/components/user-menu";
 import { cn } from "@/lib/cn";
@@ -38,10 +39,8 @@ export function TopNav({ showSearch = true }: { showSearch?: boolean }) {
           href="/"
           className="flex items-center gap-2.5 text-[15px] font-semibold tracking-[-0.01em]"
         >
-          <span className="grid size-[26px] place-items-center rounded-[7px] bg-gradient-to-b from-[#2ea0f8] to-[#0b66b8] shadow-[0_0_0_1px_rgba(46,160,248,0.4),0_4px_14px_-2px_rgba(46,160,248,0.35)]">
-            <Icon.shield className="size-3.5 text-white" />
-          </span>
-          Inherit
+          <BrandMark className="size-[26px]" priority />
+          SST Inherit
         </Link>
 
         <span className="h-[18px] w-px bg-border-strong max-md:hidden" />

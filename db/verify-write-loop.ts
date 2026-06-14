@@ -797,6 +797,25 @@ async function main() {
     "listOpsRoundTypes returns the managed round vocabulary",
   );
 
+  console.log("\n— Ops search: queue + published filter server-side —");
+  const pubGoldman = await listOpsPublished({ q: "Goldman" });
+  ok(
+    pubGoldman.items.some((e) => e.id === propId) && pubGoldman.total >= 1,
+    "listOpsPublished search matches by company name (paginated total reflects the filter)",
+  );
+  ok(
+    (await listOpsPublished({ q: "zzqq-no-such-thing" })).total === 0,
+    "listOpsPublished search returns nothing for a non-match",
+  );
+  ok(
+    (await getOpsQueue({ q: "SDE Intern" })).total >= 1,
+    "getOpsQueue search matches pending posts by role",
+  );
+  ok(
+    (await getOpsQueue({ q: "zzqq-no-such-thing" })).total === 0,
+    "getOpsQueue search returns nothing for a non-match",
+  );
+
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }
 

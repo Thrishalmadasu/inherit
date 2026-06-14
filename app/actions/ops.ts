@@ -16,6 +16,7 @@ export async function searchCompaniesForResolve(
 export async function fetchOpsQueue(opts: {
   anonymousOnly?: boolean;
   page?: number;
+  q?: string;
 }): Promise<Paginated<OpsQueueItem>> {
   await requireOps();
   return getOpsQueue(opts);
@@ -23,6 +24,7 @@ export async function fetchOpsQueue(opts: {
 
 export async function fetchOpsPublished(opts: {
   page?: number;
+  q?: string;
 }): Promise<Paginated<OpsPublishedItem>> {
   await requireOps();
   return listOpsPublished(opts);

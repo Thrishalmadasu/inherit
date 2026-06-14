@@ -381,7 +381,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 118-assertion write-loop + engagement + invite (CSV+manual) + email/sheets + roles + canonical-entity (#10) invariant test (real DB!) —
+                     # 122-assertion write-loop + engagement + invite (CSV+manual) + email/sheets + roles + canonical-entity (#10) + Ops-search invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -525,6 +525,12 @@ npx vercel deploy --prod --yes   # deploy
      from props (fresh after `router.refresh`) and accumulates extra pages, resetting
      on any moderation action. The saved query joins through `visibleExp` so
      total/page stay consistent under the visibility invariant.
+   - ✅ **Ops search (2026-06-14):** `getOpsQueue` + `listOpsPublished` take an optional
+     `q` (server-side `opsSearchCond`: role / company name / proposed name / round, via
+     correlated subqueries so it folds into both the COUNT and the page query). Each Ops
+     tab has a search box; `usePaged` runs in a search mode (debounced page-1 from the
+     server + q-aware Load-more, props ignored) so a moderator can find ANY matching post
+     to hide/unhide, however old — not just scroll Load-more. Verified by 4 harness assertions.
    - **`getMyPosts` deliberately NOT paginated:** it's one author's own rows
      (naturally bounded) AND the My Posts view mixes client-only localStorage drafts
      with DB rows — server pagination would be disproportionate. Revisit only if a

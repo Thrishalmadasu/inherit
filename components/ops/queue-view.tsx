@@ -4,7 +4,7 @@
 // props; every button calls a real Server Action. Reason discipline is
 // enforced here too: Suggest edits / Reject / Hide all demand a note before
 // the confirm button enables (the action layer re-checks).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -29,40 +29,93 @@ import type { OpsPublishedItem, OpsQueueItem } from "@/lib/types";
 
 type View = "all" | "anonymous" | "published";
 
-// Page-1 lives in props (always fresh after router.refresh); "Load more"
-// accumulates further pages in `extra`. On a mutation we reset() + refresh, so
-// stale older pages never linger.
+// Two modes:
+//  - No search: page 1 lives in props (fresh after router.refresh); "Load more"
+//    accumulates further pages in `extra`.
+//  - Search (q non-empty): the whole list is server-driven — page 1 comes from
+//    fetchPage(1, q) (debounced), "Load more" pulls fetchPage(n, q). Props are
+//    ignored so a moderator can find any matching post, however old.
+// On a mutation, reset() re-runs the active search (or clears load-more pages so
+// the refreshed props page-1 shows) — stale rows never linger.
 function usePaged<T extends { id: string }>(
   initial: Paginated<T>,
-  fetchPage: (page: number) => Promise<Paginated<T>>,
+  fetchPage: (page: number, q: string) => Promise<Paginated<T>>,
 ) {
+  const [q, setQ] = useState("");
   const [extra, setExtra] = useState<T[]>([]);
   const [nextPage, setNextPage] = useState(2);
   const [moreHasMore, setMoreHasMore] = useState(false);
+  const [search, setSearch] = useState<{
+    items: T[];
+    total: number;
+    hasMore: boolean;
+    page: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const items = useMemo(() => [...initial.items, ...extra], [initial.items, extra]);
-  const hasMore = extra.length === 0 ? initial.hasMore : moreHasMore;
+  const searching = q.trim().length > 0;
+
+  const runSearch = (term: string) => {
+    setLoading(true);
+    fetchPage(1, term)
+      .then((res) => setSearch({ items: res.items, total: res.total, hasMore: res.hasMore, page: 1 }))
+      .catch(() => toast("Couldn't search - please try again"))
+      .finally(() => setLoading(false));
+  };
+
+  const onQuery = (next: string) => {
+    setQ(next);
+    if (debRef.current) clearTimeout(debRef.current);
+    const term = next.trim();
+    if (!term) {
+      setSearch(null);
+      return;
+    }
+    debRef.current = setTimeout(() => runSearch(term), 300);
+  };
+
+  const items = useMemo(
+    () => (searching ? (search?.items ?? []) : [...initial.items, ...extra]),
+    [searching, search, initial.items, extra],
+  );
+  const total = searching ? (search?.total ?? 0) : initial.total;
+  const hasMore = searching
+    ? Boolean(search?.hasMore)
+    : extra.length === 0
+      ? initial.hasMore
+      : moreHasMore;
 
   const loadMore = async () => {
     setLoading(true);
     try {
-      const res = await fetchPage(nextPage);
-      setExtra((p) => [...p, ...res.items]);
-      setMoreHasMore(res.hasMore);
-      setNextPage((n) => n + 1);
+      if (searching && search) {
+        const res = await fetchPage(search.page + 1, q.trim());
+        setSearch((s) =>
+          s ? { ...s, items: [...s.items, ...res.items], hasMore: res.hasMore, page: s.page + 1 } : s,
+        );
+      } else {
+        const res = await fetchPage(nextPage, "");
+        setExtra((p) => [...p, ...res.items]);
+        setMoreHasMore(res.hasMore);
+        setNextPage((n) => n + 1);
+      }
     } catch {
       toast("Couldn't load more - please try again");
     } finally {
       setLoading(false);
     }
   };
+
   const reset = () => {
     setExtra([]);
     setNextPage(2);
     setMoreHasMore(false);
+    if (q.trim()) runSearch(q.trim());
+    else setSearch(null);
   };
-  return { items, total: initial.total, hasMore, loading, loadMore, reset };
+
+  return { q, onQuery, items, total, hasMore, loading, loadMore, reset, searching };
 }
 
 export function OpsQueueView({
@@ -81,9 +134,9 @@ export function OpsQueueView({
   const [hideTarget, setHideTarget] = useState<OpsPublishedItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const allList = usePaged(queue, (page) => fetchOpsQueue({ page }));
-  const anonList = usePaged(anonymous, (page) => fetchOpsQueue({ anonymousOnly: true, page }));
-  const pubList = usePaged(published, (page) => fetchOpsPublished({ page }));
+  const allList = usePaged(queue, (page, q) => fetchOpsQueue({ page, q }));
+  const anonList = usePaged(anonymous, (page, q) => fetchOpsQueue({ anonymousOnly: true, page, q }));
+  const pubList = usePaged(published, (page, q) => fetchOpsPublished({ page, q }));
 
   const counts = { all: allList.total, anonymous: anonList.total, published: pubList.total };
   const queueList = view === "anonymous" ? anonList : allList;
@@ -148,11 +201,29 @@ export function OpsQueueView({
         </span>
       </div>
 
+      {/* Server-side search of the active tab (find any post, however old) */}
+      <div className="mb-3.5">
+        <input
+          value={active.q}
+          onChange={(e) => active.onQuery(e.target.value)}
+          placeholder={
+            view === "published"
+              ? "Search published posts by company, role, or round..."
+              : "Search the queue by company, role, or round..."
+          }
+          className="h-9 w-full max-w-[380px] rounded-md border border-border bg-bg-2 px-3 text-[13px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]"
+        />
+      </div>
+
       {view !== "published" ? (
         queueList.items.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
-            <strong className="mb-1.5 block font-semibold text-fg">Queue is clear.</strong>
-            New submissions will appear here as they come in.
+            <strong className="mb-1.5 block font-semibold text-fg">
+              {queueList.searching ? "No matches." : "Queue is clear."}
+            </strong>
+            {queueList.searching
+              ? "No pending posts match your search."
+              : "New submissions will appear here as they come in."}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">
@@ -167,6 +238,15 @@ export function OpsQueueView({
             ))}
           </div>
         )
+      ) : pubList.items.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
+          <strong className="mb-1.5 block font-semibold text-fg">
+            {pubList.searching ? "No matches." : "Nothing published yet."}
+          </strong>
+          {pubList.searching
+            ? "No published posts match your search."
+            : "Approved posts will appear here."}
+        </div>
       ) : (
         <div className="flex flex-col gap-2.5">
           {pubList.items.map((e) => (

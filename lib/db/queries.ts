@@ -581,13 +581,30 @@ export async function getMyPendingPost(userId: string): Promise<PendingPreview |
 }
 
 // ── Ops reads ────────────────────────────────────────────────────────────────
+// Server-side search for the Ops tabs: match role / company (canonical name or
+// the proposed name) / round, case-insensitive. Self-contained against
+// `experiences` via correlated subqueries, so it drops straight into both the
+// COUNT and the paginated page query without extra joins.
+function opsSearchCond(q?: string): SQL | undefined {
+  const term = q?.trim();
+  if (!term) return undefined;
+  const like = `%${term}%`;
+  return or(
+    ilike(s.experiences.roleTitle, like),
+    ilike(s.experiences.proposedCompanyName, like),
+    sql`exists (select 1 from ${s.companies} where ${s.companies.id} = ${s.experiences.companyId} and ${s.companies.name} ilike ${like})`,
+    sql`exists (select 1 from ${s.rounds} where ${s.rounds.experienceId} = ${s.experiences.id} and ${s.rounds.name} ilike ${like})`,
+  );
+}
+
 // FIFO is the product promise (PRD §10): oldest created_at first, no
 // fast-tracking. Resubmissions re-stamp created_at, which is what sends them
-// to the back of this very ordering.
+// to the back of this very ordering. `q` filters the queue (server-side).
 export async function getOpsQueue(opts?: {
   anonymousOnly?: boolean;
   page?: number;
   pageSize?: number;
+  q?: string;
 }): Promise<Paginated<OpsQueueItem>> {
   const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
   const where = and(
@@ -595,6 +612,7 @@ export async function getOpsQueue(opts?: {
     isNull(s.experiences.withdrawnAt),
     isNull(s.experiences.deletedAt),
     opts?.anonymousOnly ? eq(s.experiences.isAnonymous, true) : undefined,
+    opsSearchCond(opts?.q),
   );
   const [[{ total }], pending] = await Promise.all([
     db.select({ total: count() }).from(s.experiences).where(where),
@@ -630,9 +648,14 @@ export async function getOpsQueue(opts?: {
 export async function listOpsPublished(opts?: {
   page?: number;
   pageSize?: number;
+  q?: string;
 }): Promise<Paginated<OpsPublishedItem>> {
   const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
-  const where = and(eq(s.experiences.reviewStatus, "approved"), isNull(s.experiences.deletedAt));
+  const where = and(
+    eq(s.experiences.reviewStatus, "approved"),
+    isNull(s.experiences.deletedAt),
+    opsSearchCond(opts?.q),
+  );
   const [[{ total }], rows] = await Promise.all([
     db.select({ total: count() }).from(s.experiences).where(where),
     loadWhere(where, desc(s.experiences.publishedAt), size, offset),

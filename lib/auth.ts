@@ -41,15 +41,31 @@ async function devImpersonationEmail(): Promise<string | null> {
   return jar.get(DEV_IMPERSONATE_COOKIE)?.value ?? null;
 }
 
-// OPS_EMAILS: comma-separated allowlist (env). Interim gate until DB roles
-// land with the write loop (Session 2).
-export function isOpsEmail(email?: string | null): boolean {
+// Env allowlist helper — comma-separated, case-insensitive.
+function envAllowlist(raw: string | undefined, email: string | null | undefined): boolean {
   if (!email) return false;
-  return (process.env.OPS_EMAILS ?? "")
+  return (raw ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean)
     .includes(email.toLowerCase());
+}
+
+// OPS_EMAILS: bootstrap allowlist for Ops ACCESS. DB roles are now the primary
+// gate (managed in /ops/users); this stays as an OR-gate so a misconfigured
+// roles table can never lock moderators out of the queue.
+export function isOpsEmail(email?: string | null): boolean {
+  return envAllowlist(process.env.OPS_EMAILS, email);
+}
+
+// SUPER_ADMIN_EMAILS: bootstrap allowlist for the SUPER-ADMIN power (granting
+// roles). Solves the chicken-and-egg on a fresh DB — before anyone holds the
+// super_admin role there'd be no one able to assign it. Keep this to the one
+// or two people who own role management; once they're super_admin in the DB it
+// is redundant but harmless. Distinct from OPS_EMAILS on purpose: a student who
+// helps moderate can be in OPS_EMAILS WITHOUT gaining role-management power.
+export function isSuperAdminEmail(email?: string | null): boolean {
+  return envAllowlist(process.env.SUPER_ADMIN_EMAILS, email);
 }
 
 export type AuthGate =
@@ -144,9 +160,21 @@ export function isOpsUser(u: DbUser): boolean {
   return u.role === "moderator" || u.role === "super_admin" || isOpsEmail(u.sstEmail);
 }
 
+// Super admin = the only role allowed to grant/revoke roles. DB role first,
+// SUPER_ADMIN_EMAILS as the fresh-DB bootstrap (see isSuperAdminEmail).
+export function isSuperAdmin(u: DbUser): boolean {
+  return u.role === "super_admin" || isSuperAdminEmail(u.sstEmail);
+}
+
 export async function requireOps(): Promise<DbUser> {
   const u = await requireDbUser();
   if (!isOpsUser(u)) throw new Error("Moderator access required");
+  return u;
+}
+
+export async function requireSuperAdmin(): Promise<DbUser> {
+  const u = await requireDbUser();
+  if (!isSuperAdmin(u)) throw new Error("Super admin access required");
   return u;
 }
 

@@ -27,7 +27,7 @@ next person interviewing at a company walks in with the batch's collective intel
 | Read paths (dashboard, companies, company, experience, feed, search) | ✅ **Real DB** | funnel + topics computed from rows |
 | Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ **Live** | submits via Server Action; drafts still localStorage |
 | My Posts / Under Review / Ops queue | ✅ **Real DB** | tabs, statuses, FIFO queue, all actions write rows |
-| Ops users tab | ✅ UI complete | still hardcoded; role management is a later session |
+| Ops users tab + role management | ✅ **Real DB** | paginated + searchable user table; super-admin-only promote/demote (`app/actions/roles.ts` → `lib/write/roles.ts`), last-super-admin lockout guard, `role_change_audit` trail; bootstrap via `SUPER_ADMIN_EMAILS` (§9) |
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
@@ -352,7 +352,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 81-assertion write-loop + engagement + invite + email/sheets invariant test (real DB!) —
+                     # 89-assertion write-loop + engagement + invite + email/sheets + roles invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -363,7 +363,8 @@ npx vercel deploy --prod --yes   # deploy
   | `DATABASE_URL` | Neon Postgres connection string |
   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_test_…` for now) |
   | `CLERK_SECRET_KEY` | Clerk backend key (`sk_test_…` for now) |
-  | `OPS_EMAILS` | comma-separated `/ops` allowlist (interim, until DB roles) |
+  | `OPS_EMAILS` | comma-separated `/ops` ACCESS bootstrap — OR-gate alongside DB roles (moderator/super_admin); keeps moderation reachable if the roles table is misconfigured |
+  | `SUPER_ADMIN_EMAILS` | comma-separated bootstrap for the SUPER-ADMIN power (granting roles in `/ops/users`). **Required in prod** until a `super_admin` row exists, else nobody can assign roles. Keep to the 1–2 role owners; distinct from `OPS_EMAILS` so a student-moderator never gains role-management power |
   | `DEV_AUTH_BYPASS` | `1` enables dev impersonation (§7) — **`.env.local` ONLY, never Vercel** |
   | `RESEND_API_KEY` | flips `lib/email` from console stub → Resend (real sends!). Needs the From domain verified in Resend (SPF/DKIM DNS) first |
   | `NEXT_PUBLIC_EMAIL_FROM` | sender address once Ops locks the subdomain (PRD §15 Q4); defaults to `ops@inherit.sst.scaler.com`. Build-time inlined → redeploy to change |
@@ -459,14 +460,20 @@ npx vercel deploy --prod --yes   # deploy
    - **Invite CSV re-upload fix:** the file `<input>` now resets its `.value` after
      each read, so re-uploading the SAME CSV (how Ops retries failed rows) fires
      `onChange` again instead of silently no-op'ing until a reload.
-   - **Still TODO from this triage (priority order):** (a) **role model** — the Ops
-     users tab is still a hardcoded mock; make DB roles real, `super_admin`-only role
-     grants, and gate destructive actions (hide) to `moderator`+ so student-ops can't
-     fat-finger; (b) **Tier-3 pagination** — `listFeed` (feed + search) is still
-     unbounded; needs keyset pagination + UI, folded together with a real
-     paginated/searchable Ops users + queue table; (c) hide-button on every post but
-     de-emphasized; (d) company/topic dedup design (companies are free-text
-     auto-created → dup risk); (e) daily moderator report email; (f) manual
+   - ✅ **Role model (done, follow-up batch):** the Ops users tab is now real —
+     paginated + searchable user table (`listOpsUsers`), super-admin-only promote/
+     demote (`app/actions/roles.ts` → `lib/write/roles.ts`, gated by
+     `requireSuperAdmin`), last-super-admin lockout guard, and a real
+     `role_change_audit` trail (`listRecentRoleChanges`). Bootstrap via
+     `SUPER_ADMIN_EMAILS` (§9). Verified by 10 new harness assertions.
+   - **Still TODO from this triage (priority order):** (a) **Tier-3 pagination** —
+     `listFeed` (feed + search) is still unbounded; needs keyset pagination + UI,
+     plus the same for the Ops queue/published tables; (b) close the Ops-nav KNOWN
+     GAP (`app/ops/layout.tsx`) — source `viewer.isOps` from the DB role so
+     DB-promoted moderators see the nav link without `OPS_EMAILS`; (c) **gate hide to
+     moderator+** and surface a de-emphasized hide on every post (concern #4) so
+     student-ops can't fat-finger; (d) company/topic dedup design (companies are
+     free-text auto-created → dup risk); (e) daily moderator report email; (f) manual
      add-recipient UI in invite. Full backlog lives in the assistant's project memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,

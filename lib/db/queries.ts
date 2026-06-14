@@ -4,7 +4,8 @@
 //
 // Rows are mapped to the shared DTO shapes (lib/types.ts) so the client
 // views stay unchanged.
-import { and, asc, count, desc, eq, inArray, isNull, max, ne, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db, schema as s } from "@/lib/db";
 import type {
   CompanyListItem,
@@ -511,6 +512,110 @@ export async function listOpsPublished(): Promise<OpsPublishedItem[]> {
     helpful: l.exp.helpfulCount,
     hiddenAt: l.exp.hiddenAt ? fmtDate(l.exp.hiddenAt) : undefined,
     hiddenReason: l.exp.hiddenReason ?? undefined,
+  }));
+}
+
+// ── Ops · user/role management (paginated + searchable) ──────────────────────
+export interface OpsUserRow {
+  id: string;
+  name: string;
+  email: string;
+  batch: string;
+  role: (typeof s.userRole.enumValues)[number];
+}
+export interface OpsUsersPage {
+  users: OpsUserRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// Admins/moderators float to the top, then alphabetical — the list is bounded
+// (LIMIT/OFFSET) so it scales past a handful of rows, and `q` matches name OR
+// email (case-insensitive).
+const roleRank = sql`case ${s.users.role} when 'super_admin' then 0 when 'moderator' then 1 else 2 end`;
+
+export async function listOpsUsers(opts?: {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<OpsUsersPage> {
+  const pageSize = Math.min(Math.max(opts?.pageSize ?? 20, 1), 100);
+  const page = Math.max(opts?.page ?? 1, 1);
+  const q = opts?.q?.trim();
+  const where = q
+    ? or(ilike(s.users.name, `%${q}%`), ilike(s.users.sstEmail, `%${q}%`))
+    : undefined;
+
+  const [[{ total }], rows] = await Promise.all([
+    db.select({ total: count() }).from(s.users).where(where),
+    db
+      .select({
+        id: s.users.id,
+        name: s.users.name,
+        email: s.users.sstEmail,
+        batchYear: s.users.batchYear,
+        role: s.users.role,
+      })
+      .from(s.users)
+      .where(where)
+      .orderBy(roleRank, asc(s.users.name))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+  ]);
+
+  return {
+    users: rows.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      batch: batchOf(u.batchYear),
+      role: u.role,
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export interface RoleChangeEntry {
+  id: string;
+  who: string;
+  fromRole: string;
+  toRole: string;
+  by: string;
+  reason: string | null;
+  when: string;
+}
+
+export async function listRecentRoleChanges(limit = 8): Promise<RoleChangeEntry[]> {
+  const changed = alias(s.users, "changed_user");
+  const changer = alias(s.users, "changed_by_user");
+  const rows = await db
+    .select({
+      id: s.roleChangeAudit.id,
+      who: changed.name,
+      fromRole: s.roleChangeAudit.fromRole,
+      toRole: s.roleChangeAudit.toRole,
+      by: changer.name,
+      reason: s.roleChangeAudit.reason,
+      when: s.roleChangeAudit.createdAt,
+    })
+    .from(s.roleChangeAudit)
+    .innerJoin(changed, eq(changed.id, s.roleChangeAudit.changedUserId))
+    .innerJoin(changer, eq(changer.id, s.roleChangeAudit.changedByUserId))
+    .orderBy(desc(s.roleChangeAudit.createdAt))
+    .limit(limit);
+  return rows.map((r) => ({
+    id: r.id,
+    who: r.who,
+    fromRole: r.fromRole,
+    toRole: r.toRole,
+    by: r.by,
+    reason: r.reason,
+    when: fmtDate(r.when),
   }));
 }
 

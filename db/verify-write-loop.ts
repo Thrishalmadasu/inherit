@@ -18,7 +18,10 @@ import {
   getExperience,
   getCompanyPage,
   listOpsPublished,
+  listOpsUsers,
+  listRecentRoleChanges,
 } from "../lib/db/queries";
+import { changeRoleCore } from "../lib/write/roles";
 import { recordViewCore, setHelpfulCore, setSavedCore } from "../lib/write/engagement";
 import { submitExperienceCore, resubmitExperienceCore, WriteError } from "../lib/write/experiences";
 import {
@@ -536,6 +539,74 @@ async function main() {
   await syncPublishedExperience(edits1); // rejected above
   ok(appended.length === 1, "a non-live (rejected) post never reaches the sheet");
   setSheetSyncForTest(null);
+
+  console.log("\n— roadmap #1/#2: role management (super-admin only, audited) —");
+  const superAdmin = await user("thrishal.23bcs10115@sst.scaler.com"); // super_admin
+  const rejects = async (fn: () => Promise<unknown>): Promise<string> => {
+    try {
+      await fn();
+      return "";
+    } catch (e) {
+      return e instanceof WriteError ? e.message : `WRONG ERROR: ${e}`;
+    }
+  };
+
+  ok(
+    (await rejects(() => changeRoleCore(moderator, student1.id, "moderator"))).includes("super admin"),
+    "a moderator cannot change roles (super-admin only)",
+  );
+
+  const promoted = await changeRoleCore(superAdmin, student1.id, "moderator", "joining the ops team");
+  ok(
+    promoted.fromRole === "student" && promoted.toRole === "moderator",
+    "super admin promotes student → moderator",
+  );
+  const [afterPromote] = await db.select().from(s.users).where(eq(s.users.id, student1.id));
+  ok(afterPromote.role === "moderator", "users row reflects the new role");
+
+  const audit = await listRecentRoleChanges(5);
+  ok(
+    audit.some(
+      (a) =>
+        a.who === student1.name &&
+        a.toRole === "moderator" &&
+        a.by === superAdmin.name &&
+        a.reason === "joining the ops team",
+    ),
+    "role change written to the audit trail (who / by / reason)",
+  );
+
+  ok(
+    (await rejects(() => changeRoleCore(superAdmin, student1.id, "moderator"))).includes("Already"),
+    "no-op: promoting to the same role is rejected",
+  );
+  ok(
+    (await rejects(() => changeRoleCore(superAdmin, student1.id, "wizard"))).includes("Unknown role"),
+    "unknown role is rejected",
+  );
+
+  // Lockout guard: Thrishal is the only super admin in the seed.
+  ok(
+    (await rejects(() => changeRoleCore(superAdmin, superAdmin.id, "student"))).includes(
+      "last super admin",
+    ),
+    "can't demote the last super admin (lockout guard)",
+  );
+  // Promote a second super admin → the guard releases.
+  await changeRoleCore(superAdmin, student2.id, "super_admin");
+  const student2Admin = await user(student2.sstEmail); // now super_admin in DB
+  const selfDemote = await changeRoleCore(superAdmin, superAdmin.id, "moderator");
+  ok(selfDemote.toRole === "moderator", "with a 2nd super admin present, self-demotion is allowed");
+  await changeRoleCore(student2Admin, superAdmin.id, "super_admin"); // restore Thrishal
+
+  // Paginated + searchable list (concern #6).
+  const search = await listOpsUsers({ q: "aarav" });
+  ok(search.users.some((u) => u.id === student1.id), "listOpsUsers search matches by name/email");
+  const pageOne = await listOpsUsers({ page: 1, pageSize: 2 });
+  ok(
+    pageOne.users.length <= 2 && pageOne.pageSize === 2 && pageOne.totalPages >= 1,
+    "listOpsUsers respects pagination bounds",
+  );
 
   console.log(`\nAll ${passed} assertions passed. Reseed before deploying: npx tsx db/seed.ts`);
 }

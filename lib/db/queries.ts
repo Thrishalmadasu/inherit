@@ -31,7 +31,10 @@ const fmtDate = (d: Date | null) =>
   d
     ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
     : "";
-const batchOf = (year: number | null) => (year ? `'${String(year).slice(2)}` : "'27");
+// Exit-year batch label ('27, '28, …) from the stored entry-year+4. Empty when
+// unknown (e.g. an allowlisted external/staff email that carries no batch) -
+// callers must render an empty batch gracefully (no dangling separators).
+const batchOf = (year: number | null) => (year ? `'${String(year).slice(2)}` : "");
 // Display company name: the canonical row's name, or the proposed name for an
 // as-yet-unresolved under-review post (author/Ops surfaces only).
 const companyNameOf = (l: Loaded) => l.company?.name ?? l.exp.proposedCompanyName ?? "-";

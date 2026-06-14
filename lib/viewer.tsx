@@ -10,6 +10,7 @@ import { createContext, useContext } from "react";
 export interface Viewer {
   name: string;
   email: string;
+  role: "student" | "moderator" | "super_admin";
   isOps: boolean;
   /** Google/Clerk profile photo URL; null when the account has no real image
    * (we fall back to the initials chip). */

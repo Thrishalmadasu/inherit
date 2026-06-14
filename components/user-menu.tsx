@@ -12,6 +12,12 @@ import { batchLabelFromEmail, initialsOf, shortName } from "@/lib/user-display";
 const ITEM =
   "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-[13px] font-medium transition-colors [&_svg]:size-3.5";
 
+const ROLE_LABEL: Record<string, string> = {
+  student: "STUDENT",
+  moderator: "MODERATOR",
+  super_admin: "SUPER ADMIN",
+};
+
 export function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -62,7 +68,8 @@ export function UserMenu() {
         <span className="flex flex-col leading-[1.15]">
           <span className="text-[12.5px] font-medium">{name}</span>
           <span className="whitespace-nowrap text-[10.5px] tracking-[0.02em] text-fg-3">
-            STUDENT{batch && ` · ${batch}`}
+            {ROLE_LABEL[viewer.role] ?? "STUDENT"}
+            {batch && ` · ${batch}`}
           </span>
         </span>
       </button>

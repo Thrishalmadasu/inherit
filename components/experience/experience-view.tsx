@@ -294,7 +294,7 @@ function Byline({ exp }: { exp: Experience }) {
         </span>
         <div>
           <div className="text-[14.5px] font-medium italic text-fg-2">
-            SST {exp.author.batch} student
+            {exp.author.batch ? `SST ${exp.author.batch} student` : "SST student"}
           </div>
           <div className="text-xs text-fg-3">
             Anonymous · identity verified by Placement Ops
@@ -316,7 +316,8 @@ function Byline({ exp }: { exp: Experience }) {
       </span>
       <div>
         <div className="text-[14.5px] font-semibold tracking-[-0.005em]">
-          {exp.author.name} · {exp.author.batch}
+          {exp.author.name}
+          {exp.author.batch && ` · ${exp.author.batch}`}
         </div>
         <div className="text-xs text-fg-3">SST · School of Technology</div>
       </div>

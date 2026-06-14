@@ -170,13 +170,13 @@ export const MERGE_TAGS = [
 ] as const;
 
 export const DEFAULT_SUBJECT =
-  "Share your {{company}} interview - 5 mins, batch '27 needs it";
+  "Share your {{company}} interview - 5 mins, your juniors need it";
 
 export const DEFAULT_BODY = `Hi {{name}},
 
 Our records show you recently interviewed at {{company}} for the {{role}} role - specifically the {{round}} round. While the details are still fresh, would you mind sharing what it was like?
 
-Batch '27 is gearing up for placements and your write-up could be the single most useful thing they read this month. It takes 5-7 mins, and you can post anonymously if you'd prefer.
+The batches gearing up for placements would find your write-up the single most useful thing they read this month. It takes 5-7 mins, and you can post anonymously if you'd prefer.
 
 Click below to start - we'll prefill what we already know:
 

@@ -38,7 +38,7 @@ export function OpsShell({
               </span>
             </div>
             <p className="m-0 text-sm text-fg-2">
-              Moderation queue and outreach for the &apos;27 placement cycle.
+              Moderation queue and outreach across placement cycles.
             </p>
           </div>
           <div className="inline-flex rounded-md border border-border bg-surface p-[3px]">

@@ -34,7 +34,7 @@ export function Author({ author }: { author: AuthorType }) {
         <span className="grid size-[18px] shrink-0 place-items-center rounded-full border border-border-strong bg-bg-2 text-[9.5px] font-semibold not-italic text-fg-3">
           ?
         </span>
-        SST {author.batch} student
+        {author.batch ? `SST ${author.batch} student` : "SST student"}
       </span>
     );
   }
@@ -49,7 +49,8 @@ export function Author({ author }: { author: AuthorType }) {
       <span className="grid size-[18px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-3 text-[9.5px] font-semibold text-fg-2">
         {initials}
       </span>
-      {author.name} · {author.batch}
+      {author.name}
+      {author.batch && ` · ${author.batch}`}
     </span>
   );
 }

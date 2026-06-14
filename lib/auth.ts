@@ -107,7 +107,7 @@ export async function ensureDbUser(): Promise<AuthGate> {
       return {
         status: "ok",
         email: row.sstEmail,
-        viewer: { name: row.name, email: row.sstEmail, isOps: isOpsUser(row), imageUrl: null, dev: true },
+        viewer: { name: row.name, email: row.sstEmail, role: row.role, isOps: isOpsUser(row), imageUrl: null, dev: true },
       };
     return { status: "signed-out" }; // stale cookie (e.g. after a reseed)
   }
@@ -158,6 +158,7 @@ export async function ensureDbUser(): Promise<AuthGate> {
   const viewer: Viewer = {
     name,
     email,
+    role: row.role,
     isOps: isOpsUser(row) || wantsSuper,
     // Google photo via Clerk; hasImage is false for accounts with no real
     // picture, so we keep the initials chip instead of Clerk's default avatar.

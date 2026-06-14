@@ -47,8 +47,10 @@ export default async function UnderReviewPage() {
   const tips = exp.prepTips ?? [];
   const title = `${exp.role} · ${exp.round ?? pending.companyName} at ${pending.companyName}`;
   const byline = exp.author.anonymous
-    ? `SST ${exp.author.batch} student · anonymous`
-    : `${exp.author.name} · ${exp.author.batch}`;
+    ? `${exp.author.batch ? `SST ${exp.author.batch} student` : "SST student"} · anonymous`
+    : exp.author.batch
+      ? `${exp.author.name} · ${exp.author.batch}`
+      : (exp.author.name ?? "");
 
   return (
     <>

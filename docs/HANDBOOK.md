@@ -1,6 +1,6 @@
 # Inherit — Maintainer's Handbook (KT)
 
-> Living document. Last updated **2026-06-14** — pre-launch pass: read-path perf (full-corpus scans removed) + invite CSV re-upload fix. Prior: Session 5 (Resend email + L&D Sheets sync, both behind interfaces).
+> Living document. Last updated **2026-06-14** — canonical entities / zero duplicates (#10): Ops-managed `round_types`, companies resolved-at-review (no auto-create), DB-sourced share-form vocabularies, `/ops/taxonomy` admin. Prior: pre-launch perf pass + invite CSV fix; Session 5 (Resend email + L&D Sheets sync, behind interfaces).
 > Read this top-to-bottom once and you can maintain, extend, and explain the system.
 
 ---
@@ -28,6 +28,7 @@ next person interviewing at a company walks in with the batch's collective intel
 | Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ **Live** | submits via Server Action; drafts still localStorage |
 | My Posts / Under Review / Ops queue | ✅ **Real DB** | tabs, statuses, FIFO queue, all actions write rows |
 | Ops users tab + role management | ✅ **Real DB** | paginated + searchable user table; super-admin-only promote/demote (`app/actions/roles.ts` → `lib/write/roles.ts`), last-super-admin lockout guard, `role_change_audit` trail; bootstrap via `SUPER_ADMIN_EMAILS` (§9) |
+| Canonical entities — companies / round types / topics (no dupes, #10) | ✅ **Real DB** | share form SELECTs from the canonical DB lists (`getShareFormOptions`); a new company rides as a proposal resolved at review (no auto-create); `/ops/taxonomy` admin (add/rename/alias/merge companies; add/rename/activate round types + topics) — `lib/write/taxonomy.ts`, moderator-gated |
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
@@ -86,7 +87,8 @@ web/
 │  ├─ under-review/page.tsx   # author's actual pending post + edit/withdraw
 │  ├─ actions/                # ★ Server Action endpoints ("use server"): thin
 │  │                          #   auth wrappers around lib/write/* cores
-│  └─ ops/                    # layout = DB-role ∪ OPS_EMAILS gate; queue + invite real; users mock
+│  └─ ops/                    # layout = DB-role ∪ OPS_EMAILS gate; queue, invite,
+│                             #   users, taxonomy (#10 canonical-entity admin) — all real
 ├─ components/
 │  ├─ ui/                     # primitive layer: pill, button, chip, stat-card,
 │  │                          #   funnel, topics-list, experience-card, select, modal
@@ -121,8 +123,10 @@ web/
 │  │                          #   throws); rows.ts = PURE §13 row mapping; google.ts =
 │  │                          #   service-account JWT + values.append (zero deps)
 │  ├─ write/                  # ★ write cores: experiences (submit/resubmit),
-│  │                          #   moderation, my-posts, engagement (helpful/save/
-│  │                          #   view), invites (campaign send), run (action wrapper).
+│  │                          #   moderation (incl. resolve-proposed-company),
+│  │                          #   taxonomy (#10: company/round-type/topic add/
+│  │                          #   rename/alias/merge/activate), my-posts,
+│  │                          #   engagement, invites, roles, run (action wrapper).
 │  │                          #   Take an explicit `actor` — testable without Clerk
 │  ├─ share-form.ts           # curated taxonomy, form constants, completion %
 │  ├─ draft.ts                # localStorage draft persistence
@@ -187,11 +191,26 @@ flags                                    (reserved, no UI in V1)
   on 2026-06-12 and was dropped with this decision.
 - **Author delete ≠ Ops hide** — separate column sets (`deleted_*` vs `hidden_*`) so
   accountability is never ambiguous. Hide requires a reason (enforced in the action layer).
-- **Round is a container** — `rounds.name` is a label ("OA", "Tech 1", custom). Content is
+- **Round is a container** — `rounds.name` is a label ("OA", "Tech 1"…). Content is
   typed `content_blocks` (coding | system_design | behavioral | open); any round can mix types.
-- **Curated taxonomy** — students pick tags only from `topic_tags`; `is_dsa` powers the
-  future L&D split. Enforced twice: the Zod schema admits only `TOPIC_TAXONOMY` labels,
-  and the write core re-resolves labels against ACTIVE `topic_tags` rows.
+- **Canonical vocabularies — no duplicates, ever (#10).** Companies, round types
+  (`round_types`), and topics (`topic_tags`) are Ops-managed canonical lists; students
+  SELECT from them in the share form (`getShareFormOptions` → props), never free-type.
+  Uniqueness is enforced at the ROOT (only Ops adds entries via `/ops/taxonomy`), not by
+  cleanup. The write cores re-resolve every submitted round/topic label against ACTIVE rows
+  (`assertRoundTypes` / `resolveTagIds`) and reject unknowns — the real contract; Zod only
+  checks shape/length now (so an Ops-added entry works the instant it exists). Renaming a
+  round type propagates to the denormalized `rounds.name` (all stored names are canonical, so
+  they match by old label); renaming a topic needs no propagation (links reference `tag_id`).
+- **Companies are never auto-created.** `resolveCompany` matches the canonical list by name or
+  alias; an unmatched name rides along as `experiences.proposed_company_name` with
+  `company_id` NULL (nullable now). A moderator resolves it during the EXISTING review — map
+  to an existing company (the typed spelling is folded in as an alias, so the next student
+  auto-binds) or promote it to canonical. `approveCore` REFUSES to publish while `company_id`
+  is NULL. Every visible/approved experience therefore has a company; only author/Ops reads
+  ever see a proposed name (`loadWhere` left-joins companies; `companyNameOf` falls back to the
+  proposal). Ops `/ops/taxonomy` also supports rename / add-alias / **merge** (repoint every
+  experience, fold name+aliases into the target, delete the source — one batch).
 - Soft-delete only; nothing is ever hard-deleted.
 - **`created_at` on an under_review experience = queue-entry time.** The Ops queue is
   `ORDER BY created_at ASC`, and every (re)submission — edit of an approved post,
@@ -212,7 +231,10 @@ flags                                    (reserved, no UI in V1)
 `post_hidden`; Session 3 added — and same-day dropped — `viewed_experiences`, this way;
 Session 4 added `invite_skip_reason.already_invited` via an explicit one-statement
 `ALTER TYPE … ADD VALUE` instead of a blind push — prefer that for additive enum
-changes; Session 5 added `experiences.sheet_synced_at` the same explicit-ALTER way).
+changes; Session 5 added `experiences.sheet_synced_at` the same explicit-ALTER way; the
+#10 pass added the `round_types` table, made `experiences.company_id` NULLABLE,
+and added `experiences.proposed_company_name` via `drizzle-kit push` on a clean
+pre-launch DB + reseed).
 The planned switch to generated migrations did NOT happen
 with the write loop — it moved to the hardening item (§10 #6) and must land before
 real user data exists. Until then push remains the only mechanism; be careful.
@@ -330,7 +352,9 @@ visit `/sign-in` directly. Production behavior is byte-for-byte unchanged.
 | Share form | drafts in **localStorage**; `?edit=` prefill from **Neon** | Submit/Resubmit = real (`submitExperience`) |
 | My Posts (incl. Saved tab) / Under Review / dashboard strip | **Neon** | Delete/Restore/Withdraw/Resubmit = real; Saved tab lists bookmarks (others' posts, via the visibility invariant) |
 | Ops queue (pending + published views) | **Neon**, FIFO | Approve/Suggest edits/Reject/Hide/Unhide = real |
-| Ops users tab | hardcoded list | role change = toast only (later session) |
+| Ops users tab | **Neon** | super-admin-only role change (real, audited) |
+| Ops taxonomy tab (`/ops/taxonomy`) | **Neon** | companies / round types / topics — add/rename/alias/merge/activate (real, moderator-gated, `lib/write/taxonomy.ts`) |
+| Share form vocabularies | **Neon** (`getShareFormOptions`) | company typeahead + round `<select>` + topic tags all SELECT canonical DB rows; unmatched company = proposal resolved at review |
 | Ops invite tab | **Neon** (campaign + recipient rows = audit trail; **no dedupe** — every valid row sends) | Send = real (`sendInvites`); dispatch through `lib/email` — Resend when `RESEND_API_KEY` is set, console stub otherwise; rows stamped sent/failed per recipient |
 | Notifications | **rows written** on every transition | no bell UI yet; **emails real** for the four review transitions (under review / live / needs edits / rejected) via `lib/email`, best-effort after the batch commits |
 | L&D sheet | `sheet_synced_at` stamp on experiences | append fired by `after()` in the approve action → `lib/sheets.syncPublishedExperience` (async, 3 attempts, never blocks/fails publish); Google driver when SA key + sheet id set, stub otherwise |
@@ -352,7 +376,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 92-assertion write-loop + engagement + invite + email/sheets + roles invariant test (real DB!) —
+                     # 115-assertion write-loop + engagement + invite + email/sheets + roles + canonical-entity (#10) invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -506,10 +530,17 @@ npx vercel deploy --prod --yes   # deploy
      STATIC `COMPANY_SUGGESTIONS` list (not the DB); `resolveCompanyId`
      (lib/write/experiences.ts) auto-creates a row on any unmatched name → real dup
      risk ("Goldman" vs "Goldman Sachs").
-   - **Still TODO from this triage (priority order):** (a) **#10** company/topic dedup
-     design — DB-backed typeahead + alias-merge + "request new" review path; (b) daily
-     moderator report email; (c) manual add-recipient UI in invite. Full backlog lives
-     in the assistant's project memory.
+   - ✅ **#10 canonical entities / zero duplicates (done):** companies, round types
+     (new `round_types` table), and topics are Ops-managed canonical lists the share form
+     SELECTs from (`getShareFormOptions`); students never free-type. Unknown company →
+     `proposed_company_name` (company_id nullable) resolved at the EXISTING Ops review (map →
+     fold-as-alias / promote), `approveCore` gated on resolution; `/ops/taxonomy` admin
+     (add/rename/alias/**merge** companies; add/rename/activate round types + topics) in
+     `lib/write/taxonomy.ts`, moderator-gated. Read layer left-joins companies + null-safe
+     mapping; visible surfaces unchanged. +23 harness assertions (115 total).
+   - **Still TODO from this triage (priority order):** (a) daily moderator report email;
+     (b) manual add-recipient UI in invite. Full backlog lives in the assistant's project
+     memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.

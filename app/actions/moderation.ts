@@ -11,9 +11,11 @@ import {
   hideCore,
   rejectCore,
   resolveExperienceCompanyCore,
+  resolveExperienceRoleCore,
   suggestEditsCore,
   unhideCore,
   type CompanyResolution,
+  type RoleResolution,
 } from "@/lib/write/moderation";
 import { runActionData, runAction, type ActionDataResult, type ActionResult } from "@/lib/write/run";
 
@@ -37,6 +39,16 @@ export async function resolveExperienceCompany(
 ): Promise<ActionDataResult<{ companyName: string }>> {
   const actor = await requireOps();
   return runActionData(() => resolveExperienceCompanyCore(actor, expId, resolution));
+}
+
+// Resolve a proposed role during review (concern #10) — map to an existing role
+// type or promote it. Any Ops user, like the other review actions.
+export async function resolveExperienceRole(
+  expId: string,
+  resolution: RoleResolution,
+): Promise<ActionDataResult<{ role: string }>> {
+  const actor = await requireOps();
+  return runActionData(() => resolveExperienceRoleCore(actor, expId, resolution));
 }
 
 export async function suggestEdits(expId: string, note: string): Promise<ActionResult> {

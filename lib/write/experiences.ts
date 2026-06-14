@@ -74,6 +74,21 @@ async function resolveCompany(name: string): Promise<CompanyBinding> {
   return { companyId: null, proposedName: name };
 }
 
+// Roles mirror companies (concern #10): match the canonical role_types list
+// case-insensitively; on a hit bind roleTypeId + use the canonical label. On a
+// miss the typed role rides along as PROPOSED (roleTypeId NULL, roleTitle = the
+// typed text) until a moderator resolves it at review. Never auto-created.
+type RoleBinding = { roleTypeId: string | null; label: string };
+
+async function resolveRole(name: string): Promise<RoleBinding> {
+  const [found] = await db
+    .select({ id: s.roleTypes.id, label: s.roleTypes.label })
+    .from(s.roleTypes)
+    .where(and(sql`lower(${s.roleTypes.label}) = ${name.toLowerCase()}`, eq(s.roleTypes.isActive, true)));
+  if (found) return { roleTypeId: found.id, label: found.label };
+  return { roleTypeId: null, label: name };
+}
+
 // Insert statements shared by create and edit: rounds → blocks → tag links →
 // tips, with ids pre-generated so the whole tree fits in one batch.
 function contentInserts(expId: string, payload: SharePayload, tagId: Map<string, string>): Batchable[] {
@@ -155,9 +170,10 @@ export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): 
   const payload = parsed.data;
 
   await assertRoundTypes(payload);
-  const [tagId, company] = await Promise.all([
+  const [tagId, company, role] = await Promise.all([
     resolveTagIds(payload),
     resolveCompany(payload.company),
+    resolveRole(payload.role),
   ]);
 
   const expId = `exp-${nanoid(12)}`;
@@ -167,7 +183,8 @@ export async function submitExperienceCore(actor: DbUser, raw: ShareDraftForm): 
       authorId: actor.id,
       companyId: company.companyId,
       proposedCompanyName: company.proposedName,
-      roleTitle: payload.role,
+      roleTitle: role.label,
+      roleTypeId: role.roleTypeId,
       year: payload.year,
       overallOutcome: payload.outcome,
       isAnonymous: payload.anonymous,
@@ -202,9 +219,10 @@ export async function resubmitExperienceCore(
   if (existing.deletedAt) throw new WriteError("Restore this post before editing it");
 
   await assertRoundTypes(payload);
-  const [tagId, company] = await Promise.all([
+  const [tagId, company, role] = await Promise.all([
     resolveTagIds(payload),
     resolveCompany(payload.company),
+    resolveRole(payload.role),
   ]);
 
   const now = new Date();
@@ -214,7 +232,8 @@ export async function resubmitExperienceCore(
       .set({
         companyId: company.companyId,
         proposedCompanyName: company.proposedName,
-        roleTitle: payload.role,
+        roleTitle: role.label,
+        roleTypeId: role.roleTypeId,
         year: payload.year,
         overallOutcome: payload.outcome,
         isAnonymous: payload.anonymous,

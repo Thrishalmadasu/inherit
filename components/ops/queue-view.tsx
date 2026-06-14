@@ -18,11 +18,17 @@ import {
   hideExperience,
   rejectExperience,
   resolveExperienceCompany,
+  resolveExperienceRole,
   suggestEdits,
   unhideExperience,
 } from "@/app/actions/moderation";
-import { fetchOpsPublished, fetchOpsQueue, searchCompaniesForResolve } from "@/app/actions/ops";
-import type { CompanyResolution } from "@/lib/write/moderation";
+import {
+  fetchOpsPublished,
+  fetchOpsQueue,
+  searchCompaniesForResolve,
+  searchRoleTypesForResolve,
+} from "@/app/actions/ops";
+import type { CompanyResolution, RoleResolution } from "@/lib/write/moderation";
 import type { Paginated } from "@/lib/db/queries";
 import type { ActionResult } from "@/lib/write/run";
 import type { OpsPublishedItem, OpsQueueItem } from "@/lib/types";
@@ -174,6 +180,22 @@ export function OpsQueueView({
     return true;
   };
 
+  const resolveRole = async (id: string, resolution: RoleResolution): Promise<boolean> => {
+    setBusyId(id);
+    const res = await resolveExperienceRole(id, resolution);
+    setBusyId(null);
+    if (!res.ok) {
+      toast(res.error);
+      return false;
+    }
+    toast(`Role set to ${res.data.role}`);
+    allList.reset();
+    anonList.reset();
+    pubList.reset();
+    router.refresh();
+    return true;
+  };
+
   const oldest = allList.items[0];
 
   return (
@@ -234,6 +256,7 @@ export function OpsQueueView({
                 busy={busyId === q.id}
                 run={run}
                 resolveCompany={resolveCompany}
+                resolveRole={resolveRole}
               />
             ))}
           </div>
@@ -297,21 +320,26 @@ export function OpsQueueView({
 
 type RunFn = (id: string, fn: () => Promise<ActionResult>, doneMsg: string) => Promise<boolean>;
 type ResolveFn = (id: string, resolution: CompanyResolution) => Promise<boolean>;
+type ResolveRoleFn = (id: string, resolution: RoleResolution) => Promise<boolean>;
 
 function ModCard({
   item,
   busy,
   run,
   resolveCompany,
+  resolveRole,
 }: {
   item: OpsQueueItem;
   busy: boolean;
   run: RunFn;
   resolveCompany: ResolveFn;
+  resolveRole: ResolveRoleFn;
 }) {
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState<"reject" | "edits" | null>(null);
-  const unresolved = Boolean(item.proposedCompany);
+  const unresolvedCompany = Boolean(item.proposedCompany);
+  const unresolvedRole = Boolean(item.proposedRole);
+  const unresolved = unresolvedCompany || unresolvedRole;
 
   const initials = item.realAuthor.name
     .split(" ")
@@ -385,11 +413,18 @@ function ModCard({
       {/* Proposed-company resolution (concern #10): the student named a company
           that isn't canonical yet. Map it to an existing one (dedup) or promote
           it - required before this post can be approved. */}
-      {unresolved && (
+      {unresolvedCompany && (
         <CompanyResolver
           proposed={item.proposedCompany ?? ""}
           busy={busy}
           onResolve={(resolution) => resolveCompany(item.id, resolution)}
+        />
+      )}
+      {unresolvedRole && (
+        <RoleResolver
+          proposed={item.proposedRole ?? ""}
+          busy={busy}
+          onResolve={(resolution) => resolveRole(item.id, resolution)}
         />
       )}
 
@@ -680,6 +715,116 @@ function CompanyResolver({
             className="self-start"
           >
             <Icon.plus /> {busy ? "Adding…" : "Add canonical company"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Proposed-role resolver (concern #10, roles) — mirror of CompanyResolver: map
+// the typed role to an existing canonical role type, or add it as a new one.
+function RoleResolver({
+  proposed,
+  busy,
+  onResolve,
+}: {
+  proposed: string;
+  busy: boolean;
+  onResolve: (resolution: RoleResolution) => Promise<boolean>;
+}) {
+  const [q, setQ] = useState(proposed);
+  const [matches, setMatches] = useState<{ id: string; label: string }[]>([]);
+  const [mode, setMode] = useState<"map" | "new">("map");
+  const [newLabel, setNewLabel] = useState(proposed);
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const term = q.trim();
+      if (term.length < 2) {
+        setMatches([]);
+        return;
+      }
+      try {
+        setMatches(await searchRoleTypesForResolve(term));
+      } catch {
+        setMatches([]);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const INPUT =
+    "h-9 w-full rounded-md border border-border bg-bg-2 px-3 text-[13px] text-fg outline-none placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]";
+
+  return (
+    <div className="mb-3 rounded-md border border-amber-border bg-amber-soft/40 p-3.5">
+      <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-amber">
+        <Icon.warn className="size-4 shrink-0" />
+        New role “{proposed}” — map it to an existing role or add it before approving.
+      </div>
+
+      <div className="mb-2.5 inline-flex overflow-hidden rounded-md border border-border bg-surface">
+        {(["map", "new"] as const).map((m, i) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={cn(
+              "h-8 px-3 text-xs font-medium transition-[background,color]",
+              i === 0 && "border-r border-border",
+              mode === m ? "bg-blue-soft text-blue" : "text-fg-3 hover:text-fg",
+            )}
+          >
+            {m === "map" ? "Map to existing" : "Add as new"}
+          </button>
+        ))}
+      </div>
+
+      {mode === "map" ? (
+        <div className="flex flex-col gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search canonical roles…"
+            className={INPUT}
+          />
+          {matches.length === 0 ? (
+            <p className="px-0.5 text-[12px] text-fg-3">
+              {q.trim().length < 2 ? "Type to search." : "No canonical match — add it as new instead."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {matches.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onResolve({ existingRoleTypeId: r.id })}
+                  className="flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2 text-left text-[13px] hover:border-blue-border disabled:opacity-50"
+                >
+                  <b className="font-semibold">{r.label}</b>
+                  <span className="ml-auto text-[11.5px] font-medium text-blue">Map →</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <input
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="Role name"
+            className={INPUT}
+          />
+          <Button
+            variant="primary"
+            disabled={busy || !newLabel.trim()}
+            onClick={() => onResolve({ newRole: { label: newLabel.trim() } })}
+            className="self-start"
+          >
+            <Icon.plus /> {busy ? "Adding…" : "Add canonical role"}
           </Button>
         </div>
       )}

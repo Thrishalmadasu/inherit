@@ -145,6 +145,8 @@ export interface OpsQueueItem {
   // resolve it (map to existing / promote) before this post can be approved.
   proposedCompany?: string | null;
   role: string;
+  // Set only when the role isn't canonical yet - resolved at review like company.
+  proposedRole?: string | null;
   round: string;
   outcome: Outcome;
   submittedAgo: string;

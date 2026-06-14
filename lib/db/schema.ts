@@ -119,6 +119,20 @@ export const roundTypes = pgTable("round_types", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Canonical role vocabulary (concern #10, extended to roles). Ops-managed like
+// round_types/topic_tags; the share form typeaheads against it. A submission
+// naming a role that isn't canonical rides along as a PROPOSED role
+// (experiences.role_type_id NULL, role_title = the proposed text) resolved by a
+// moderator at review — same single-gate model as companies.
+export const roleTypes = pgTable("role_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  label: text("label").notNull(),
+  slug: text("slug").notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const experiences = pgTable("experiences", {
   id: text("id").primaryKey(), // seeded "exp-019"-style; nanoid for new rows
   authorId: uuid("author_id")
@@ -131,7 +145,11 @@ export const experiences = pgTable("experiences", {
   // Every approved/visible experience has companyId set (approval requires it).
   companyId: uuid("company_id").references(() => companies.id),
   proposedCompanyName: text("proposed_company_name"),
+  // roleTitle is always the display label; roleTypeId binds it to the canonical
+  // role_types row. NULL roleTypeId = a proposed role awaiting moderator
+  // resolution (roleTitle holds the proposed text). Every approved post has it set.
   roleTitle: text("role_title").notNull(),
+  roleTypeId: uuid("role_type_id").references(() => roleTypes.id),
   year: integer("year").notNull(),
   overallOutcome: overallOutcome("overall_outcome").notNull(),
   isAnonymous: boolean("is_anonymous").notNull().default(false),

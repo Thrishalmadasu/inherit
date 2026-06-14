@@ -7,7 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { eq, inArray, sql } from "drizzle-orm";
 import * as s from "../lib/db/schema";
-import { ROUND_TYPE_SEED, TOPIC_TAXONOMY } from "../lib/share-form";
+import { ROLE_TYPE_SEED, ROUND_TYPE_SEED, TOPIC_TAXONOMY } from "../lib/share-form";
 
 const db = drizzle(neon(process.env.DATABASE_URL!), { schema: s });
 
@@ -341,6 +341,7 @@ async function main() {
   await db.delete(s.contentBlockTopicTags);
   await db.delete(s.topicTags);
   await db.delete(s.roundTypes);
+  await db.delete(s.roleTypes);
   await db.delete(s.companies);
   await db.delete(s.users);
 
@@ -377,6 +378,13 @@ async function main() {
     ROUND_TYPE_SEED.map((label, i) => ({ label, slug: slugify(label), position: i })),
   );
 
+  console.log("Role types…");
+  const roleRows = await db
+    .insert(s.roleTypes)
+    .values(ROLE_TYPE_SEED.map((label) => ({ label, slug: slugify(label) })))
+    .returning();
+  const roleTypeId = new Map(roleRows.map((r) => [r.label, r.id]));
+
   console.log("Experiences…");
   for (const e of EXPERIENCES) {
     const published = new Date(e.publishedAt);
@@ -385,6 +393,7 @@ async function main() {
       authorId: userId.get(e.author)!,
       companyId: companyId.get(e.company)!,
       roleTitle: e.role,
+      roleTypeId: roleTypeId.get(e.role) ?? null,
       year: e.year,
       overallOutcome: e.outcome,
       isAnonymous: e.anonymous ?? false,

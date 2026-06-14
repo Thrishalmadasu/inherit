@@ -29,7 +29,7 @@ next person interviewing at a company walks in with the batch's collective intel
 | Share form (5 steps, block-composed rounds, curated tags, autosave) | ✅ **Live** | submits via Server Action; drafts still localStorage |
 | My Posts / Under Review / Ops queue | ✅ **Real DB** | tabs, statuses, FIFO queue, all actions write rows |
 | Ops users tab + role management | ✅ **Real DB** | **super-admin ONLY** — the `/ops/users` page redirects non-super-admins and the nav tab is hidden from moderators; paginated + searchable user table; super-admin-only promote/demote (`app/actions/roles.ts` → `lib/write/roles.ts`), last-super-admin lockout guard, `role_change_audit` trail; bootstrap via `SUPER_ADMIN_EMAILS` (§9) |
-| Canonical entities — companies / round types / topics (no dupes, #10) | ✅ **Real DB** | share form SELECTs from the canonical DB lists (`getShareFormOptions`); a new company rides as a proposal resolved at review (no auto-create); `/ops/taxonomy` admin (add/rename/alias/merge companies; add/rename/activate round types + topics) — `lib/write/taxonomy.ts`, moderator-gated |
+| Canonical entities — companies / round types / topics / **roles** (no dupes, #10) | ✅ **Real DB** | share form: round/topic SELECT from active rows; **company + role are server-side typeaheads** (`app/actions/share.ts`, ≤5 results) that allow a proposed value. A new company OR role rides as a proposal resolved at review (no auto-create; approve blocked until both resolved). `/ops/taxonomy` admin (companies add/rename/alias/**merge** + **server-paginated/searchable**; round types / **roles** / topics add/rename/activate) — `lib/write/taxonomy.ts`, moderator-gated. Roles mirror companies: `role_types` table + nullable `experiences.role_type_id` |
 | Auth (Clerk, `@sst.scaler.com` gate) | ✅ **Live** | users mirrored to DB; `/ops` gated by **DB role** ∪ `OPS_EMAILS` (§7) |
 | Write loop (submit → moderate → publish → hide/delete/withdraw) | ✅ **Live** | Zod + Server Actions + one-batch transactions; invariant test in `db/verify-write-loop.ts` |
 | Helpful votes / views / saves (persisted) | ✅ **Live** | Server Actions; cached counts move atomically with the rows; views = total detail-page opens; Saved tab on /me |
@@ -235,8 +235,9 @@ Session 4 added `invite_skip_reason.already_invited` via an explicit one-stateme
 `ALTER TYPE … ADD VALUE` instead of a blind push — prefer that for additive enum
 changes; Session 5 added `experiences.sheet_synced_at` the same explicit-ALTER way; the
 #10 pass added the `round_types` table, made `experiences.company_id` NULLABLE,
-and added `experiences.proposed_company_name` via `drizzle-kit push` on a clean
-pre-launch DB + reseed).
+and added `experiences.proposed_company_name`; the roles extension added the
+`role_types` table + nullable `experiences.role_type_id` — all via `drizzle-kit
+push` on a clean pre-launch DB + reseed).
 The planned switch to generated migrations did NOT happen
 with the write loop — it moved to the hardening item (§10 #6) and must land before
 real user data exists. Until then push remains the only mechanism; be careful.
@@ -381,7 +382,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 122-assertion write-loop + engagement + invite (CSV+manual) + email/sheets + roles + canonical-entity (#10) + Ops-search invariant test (real DB!) —
+                     # 132-assertion write-loop + engagement + invite (CSV+manual) + email/sheets + roles + canonical-entity (#10) + Ops-search invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -525,6 +526,15 @@ npx vercel deploy --prod --yes   # deploy
      from props (fresh after `router.refresh`) and accumulates extra pages, resetting
      on any moderation action. The saved query joins through `visibleExp` so
      total/page stay consistent under the visibility invariant.
+   - ✅ **Canonical roles + more pagination (2026-06-14):** roles are now canonical too —
+     `role_types` table (Ops-managed, mirrors companies) + nullable `experiences.role_type_id`;
+     `resolveRole` binds a canonical role or carries a PROPOSED one; `approveCore` blocks until
+     BOTH company and role are resolved; `resolveExperienceRoleCore` + a queue-card `RoleResolver`
+     resolve it; `/ops/taxonomy` gained a **Roles** tab; the share form's company + role fields are
+     server-side typeaheads (`app/actions/share.ts`, ≤5). Also paginated/searched server-side:
+     **`/companies`** (`listCompaniesPage`, URL `?q&?page`) and the **Ops taxonomy Companies tab**
+     (`fetchOpsCompanies`); round-types/roles/topics stay full-list (small, bounded). +10 harness
+     assertions (132 total). Default page size is **10** everywhere.
    - ✅ **Ops search (2026-06-14):** `getOpsQueue` + `listOpsPublished` take an optional
      `q` (server-side `opsSearchCond`: role / company name / proposed name / round, via
      correlated subqueries so it folds into both the COUNT and the page query). Each Ops

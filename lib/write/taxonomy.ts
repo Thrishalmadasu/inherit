@@ -215,6 +215,60 @@ export async function setRoundTypeActiveCore(
   await db.update(s.roundTypes).set({ isActive }).where(eq(s.roundTypes.id, id));
 }
 
+// ── Role types (concern #10, roles) ──────────────────────────────────────────
+export async function addRoleTypeCore(actor: DbUser, label: string): Promise<{ id: string }> {
+  assertMod(actor);
+  const l = label.trim();
+  if (!l) throw new WriteError("A role is required");
+  const slug = slugify(l);
+  const [dupe] = await db
+    .select({ id: s.roleTypes.id })
+    .from(s.roleTypes)
+    .where(sql`lower(${s.roleTypes.label}) = ${l.toLowerCase()} or ${s.roleTypes.slug} = ${slug}`);
+  if (dupe) throw new WriteError(`“${l}” already exists`);
+  const [created] = await db
+    .insert(s.roleTypes)
+    .values({ label: l, slug, createdBy: actor.id })
+    .returning({ id: s.roleTypes.id });
+  return created;
+}
+
+// Rename propagates to the denormalized experiences.role_title via the FK
+// (role_type_id) — every post bound to this role follows the new label.
+export async function renameRoleTypeCore(actor: DbUser, id: string, label: string): Promise<void> {
+  assertMod(actor);
+  const l = label.trim();
+  if (!l) throw new WriteError("A role is required");
+  const [target] = await db.select().from(s.roleTypes).where(eq(s.roleTypes.id, id));
+  if (!target) throw new WriteError("Role type not found");
+  const slug = slugify(l);
+  const [dupe] = await db
+    .select({ id: s.roleTypes.id })
+    .from(s.roleTypes)
+    .where(
+      and(
+        sql`lower(${s.roleTypes.label}) = ${l.toLowerCase()} or ${s.roleTypes.slug} = ${slug}`,
+        ne(s.roleTypes.id, id),
+      ),
+    );
+  if (dupe) throw new WriteError(`“${l}” already exists`);
+  await db.batch([
+    db.update(s.roleTypes).set({ label: l, slug }).where(eq(s.roleTypes.id, id)),
+    db.update(s.experiences).set({ roleTitle: l }).where(eq(s.experiences.roleTypeId, id)),
+  ]);
+}
+
+export async function setRoleTypeActiveCore(
+  actor: DbUser,
+  id: string,
+  isActive: boolean,
+): Promise<void> {
+  assertMod(actor);
+  const [target] = await db.select().from(s.roleTypes).where(eq(s.roleTypes.id, id));
+  if (!target) throw new WriteError("Role type not found");
+  await db.update(s.roleTypes).set({ isActive }).where(eq(s.roleTypes.id, id));
+}
+
 // ── Topic tags ───────────────────────────────────────────────────────────────
 type TagCategory = (typeof s.tagCategory.enumValues)[number];
 

@@ -4,7 +4,7 @@
 // topic tags - the lists students SELECT from. Three tabs; mutations call real
 // Server Actions (moderator-gated) and refresh from the server. Data arrives as
 // props (server-loaded); after every change we router.refresh() to re-read.
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -16,16 +16,27 @@ import { toast } from "@/lib/toast";
 import {
   addCompany,
   addCompanyAlias,
+  addRoleType,
   addRoundType,
   addTopic,
+  fetchOpsCompanies,
   mergeCompanies,
   renameCompany,
+  renameRoleType,
   renameRoundType,
   renameTopic,
+  setRoleTypeActive,
   setRoundTypeActive,
   setTopicActive,
 } from "@/app/actions/taxonomy";
-import type { OpsCompanyRow, OpsRoundTypeRow, OpsTopicRow } from "@/lib/db/queries";
+import { searchCompaniesForResolve } from "@/app/actions/ops";
+import type {
+  OpsCompanyRow,
+  OpsRoleTypeRow,
+  OpsRoundTypeRow,
+  OpsTopicRow,
+  Paginated,
+} from "@/lib/db/queries";
 import type { ActionDataResult, ActionResult } from "@/lib/write/run";
 
 const INPUT =
@@ -34,17 +45,19 @@ const TH = "px-[18px] py-3 text-left text-[11.5px] font-medium uppercase trackin
 const TD = "px-[18px] py-3 align-top";
 
 const TAG_CATEGORIES = ["dsa", "system_design", "behavioral", "tooling", "domain", "other"] as const;
-type Tab = "companies" | "rounds" | "topics";
+type Tab = "companies" | "rounds" | "roles" | "topics";
 
 export function TaxonomyView({
   canManage,
   companies,
   roundTypes,
+  roleTypes,
   topics,
 }: {
   canManage: boolean;
-  companies: OpsCompanyRow[];
+  companies: Paginated<OpsCompanyRow>; // paginated (can grow); seed = page 1
   roundTypes: OpsRoundTypeRow[];
+  roleTypes: OpsRoleTypeRow[];
   topics: OpsTopicRow[];
 }) {
   const [tab, setTab] = useState<Tab>("companies");
@@ -55,8 +68,9 @@ export function TaxonomyView({
         <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-fg-3">
           Manage
         </span>
-        <Chip label="Companies" count={companies.length} active={tab === "companies"} onClick={() => setTab("companies")} />
+        <Chip label="Companies" count={companies.total} active={tab === "companies"} onClick={() => setTab("companies")} />
         <Chip label="Round types" count={roundTypes.length} active={tab === "rounds"} onClick={() => setTab("rounds")} />
+        <Chip label="Roles" count={roleTypes.length} active={tab === "roles"} onClick={() => setTab("roles")} />
         <Chip label="Topics" count={topics.length} active={tab === "topics"} onClick={() => setTab("topics")} />
       </div>
 
@@ -67,14 +81,15 @@ export function TaxonomyView({
         </div>
       )}
 
-      {tab === "companies" && <CompaniesTab canManage={canManage} companies={companies} />}
+      {tab === "companies" && <CompaniesTab canManage={canManage} initial={companies} />}
       {tab === "rounds" && <RoundsTab canManage={canManage} roundTypes={roundTypes} />}
+      {tab === "roles" && <RolesTab canManage={canManage} roleTypes={roleTypes} />}
       {tab === "topics" && <TopicsTab canManage={canManage} topics={topics} />}
 
       <p className="mt-5 text-[12.5px] leading-[1.6] text-fg-3">
-        Students pick companies, round types, and topics from these lists - they can never
-        free-type a new one. A submission naming a company that isn&apos;t here yet rides in as a
-        proposal and is resolved in the moderation queue. This is what keeps the data duplicate-free.
+        Students pick companies, round types, roles, and topics from these lists. A submission
+        naming a company or role that isn&apos;t here yet rides in as a proposal and is resolved in
+        the moderation queue. This is what keeps the data duplicate-free.
       </p>
     </>
   );
@@ -102,22 +117,59 @@ function useRun() {
   return { run, pending };
 }
 
-// ── Companies ────────────────────────────────────────────────────────────────
-function CompaniesTab({ canManage, companies }: { canManage: boolean; companies: OpsCompanyRow[] }) {
-  const { run, pending } = useRun();
-  const [filter, setFilter] = useState("");
+// ── Companies (server-paginated + search) ────────────────────────────────────
+function CompaniesTab({ canManage, initial }: { canManage: boolean; initial: Paginated<OpsCompanyRow> }) {
+  const [data, setData] = useState(initial);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [pending, startT] = useTransition();
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState("");
   const [edit, setEdit] = useState<OpsCompanyRow | null>(null);
   const [aliasFor, setAliasFor] = useState<OpsCompanyRow | null>(null);
   const [mergeFor, setMergeFor] = useState<OpsCompanyRow | null>(null);
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const f = filter.trim().toLowerCase();
-  const shown = f
-    ? companies.filter(
-        (c) => c.name.toLowerCase().includes(f) || c.aliases.some((a) => a.toLowerCase().includes(f)),
-      )
-    : companies;
+  const load = async (p: number, query: string) => {
+    setLoading(true);
+    try {
+      const res = await fetchOpsCompanies({ q: query.trim() || undefined, page: p });
+      setData(res);
+      setPage(p);
+    } catch {
+      toast("Couldn't load companies - please try again");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSearch = (next: string) => {
+    setQ(next);
+    if (debRef.current) clearTimeout(debRef.current);
+    debRef.current = setTimeout(() => load(1, next), 300);
+  };
+
+  // Run a mutation, then re-fetch the current page so the table reflects it.
+  const mutate = (
+    fn: () => Promise<ActionResult | ActionDataResult<unknown>>,
+    okMsg: string,
+    after?: () => void,
+  ) =>
+    startT(async () => {
+      const res = await fn();
+      if (!res.ok) {
+        toast(res.error);
+        return;
+      }
+      toast(okMsg);
+      after?.();
+      await load(page, q);
+    });
+
+  const busy = pending || loading;
+  const from = data.total === 0 ? 0 : (page - 1) * 10 + 1;
+  const to = (page - 1) * 10 + data.items.length;
 
   return (
     <>
@@ -133,9 +185,9 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
           </label>
           <Button
             variant="primary"
-            disabled={pending || !name.trim()}
+            disabled={busy || !name.trim()}
             onClick={() =>
-              run(() => addCompany({ name: name.trim(), industry: industry.trim() || undefined }), `Added ${name.trim()}`, () => {
+              mutate(() => addCompany({ name: name.trim(), industry: industry.trim() || undefined }), `Added ${name.trim()}`, () => {
                 setName("");
                 setIndustry("");
               })
@@ -147,9 +199,9 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
       )}
 
       <input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Filter companies…"
+        value={q}
+        onChange={(e) => onSearch(e.target.value)}
+        placeholder="Search companies by name or alias…"
         className={cn(INPUT, "mb-3 max-w-[340px]")}
       />
 
@@ -164,14 +216,14 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && (
+            {data.items.length === 0 && (
               <tr>
                 <td colSpan={canManage ? 4 : 3} className="px-[18px] py-8 text-center text-fg-3">
                   No companies match.
                 </td>
               </tr>
             )}
-            {shown.map((c) => (
+            {data.items.map((c) => (
               <tr key={c.id} className="border-b border-border last:border-b-0">
                 <td className={TD}>
                   <div className="font-semibold tracking-[-0.005em]">{c.name}</div>
@@ -209,6 +261,29 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
         </table>
       </div>
 
+      <div className="mt-3 flex items-center justify-between text-[12.5px] text-fg-3">
+        <span>{data.total === 0 ? "No companies" : `Showing ${from}–${to} of ${data.total}`}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={page <= 1 || busy}
+            onClick={() => load(page - 1, q)}
+            className="h-[30px] rounded-md border border-border px-3 font-medium text-fg-2 enabled:hover:bg-surface-3 disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <span className="tabular-nums">Page {page}</span>
+          <button
+            type="button"
+            disabled={!data.hasMore || busy}
+            onClick={() => load(page + 1, q)}
+            className="h-[30px] rounded-md border border-border px-3 font-medium text-fg-2 enabled:hover:bg-surface-3 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+
       {/* Rename company */}
       <FormModal
         open={!!edit}
@@ -220,12 +295,12 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
           { key: "location", label: "Location", value: edit?.location ?? "" },
         ]}
         confirmLabel="Save"
-        busy={pending}
+        busy={busy}
         onClose={() => setEdit(null)}
         onConfirm={(v) => {
           const target = edit;
           if (!target) return;
-          run(
+          mutate(
             () => renameCompany(target.id, { name: v.name, industry: v.industry, location: v.location }),
             "Company updated",
             () => setEdit(null),
@@ -240,25 +315,24 @@ function CompaniesTab({ canManage, companies }: { canManage: boolean; companies:
         description="Future submissions typing this spelling will auto-bind to this company (dedup at the root)."
         fields={[{ key: "alias", label: "Alias", value: "", required: true }]}
         confirmLabel="Add alias"
-        busy={pending}
+        busy={busy}
         onClose={() => setAliasFor(null)}
         onConfirm={(v) => {
           const target = aliasFor;
           if (!target) return;
-          run(() => addCompanyAlias(target.id, v.alias), `Alias added to ${target.name}`, () => setAliasFor(null));
+          mutate(() => addCompanyAlias(target.id, v.alias), `Alias added to ${target.name}`, () => setAliasFor(null));
         }}
       />
 
-      {/* Merge */}
+      {/* Merge (target chosen via search — the full list isn't loaded client-side) */}
       <MergeModal
         source={mergeFor}
-        companies={companies}
-        busy={pending}
+        busy={busy}
         onClose={() => setMergeFor(null)}
         onConfirm={(targetId) => {
           const src = mergeFor;
           if (!src) return;
-          run(
+          mutate(
             async () => {
               const res = await mergeCompanies(src.id, targetId);
               if (res.ok) toast(`Merged into ${res.data.target} (${res.data.moved} posts moved)`);
@@ -339,6 +413,78 @@ function RoundsTab({ canManage, roundTypes }: { canManage: boolean; roundTypes: 
           const target = edit;
           if (!target) return;
           run(() => renameRoundType(target.id, v.label), "Round type renamed", () => setEdit(null));
+        }}
+      />
+    </>
+  );
+}
+
+// ── Role types ───────────────────────────────────────────────────────────────
+function RolesTab({ canManage, roleTypes }: { canManage: boolean; roleTypes: OpsRoleTypeRow[] }) {
+  const { run, pending } = useRun();
+  const [label, setLabel] = useState("");
+  const [edit, setEdit] = useState<OpsRoleTypeRow | null>(null);
+
+  return (
+    <>
+      {canManage && (
+        <AddOne
+          placeholder="New role - e.g. SRE Intern"
+          value={label}
+          onChange={setLabel}
+          disabled={pending}
+          onAdd={() => run(() => addRoleType(label.trim()), `Added ${label.trim()}`, () => setLabel(""))}
+        />
+      )}
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
+        <table className="w-full border-collapse text-[13.5px]">
+          <thead>
+            <tr className="border-b border-border">
+              <th className={TH}>Role</th>
+              <th className={TH}>Used by</th>
+              <th className={TH}>Status</th>
+              {canManage && <th className={cn(TH, "text-right")}>Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {roleTypes.map((r) => (
+              <tr key={r.id} className={cn("border-b border-border last:border-b-0", !r.isActive && "opacity-55")}>
+                <td className={TD}>
+                  <span className="font-semibold">{r.label}</span>
+                  <span className="ml-2 text-[11.5px] text-fg-3">{r.slug}</span>
+                </td>
+                <td className={cn(TD, "tabular-nums text-fg-2")}>{r.uses} posts</td>
+                <td className={TD}>
+                  <ActiveBadge active={r.isActive} />
+                </td>
+                {canManage && (
+                  <td className={cn(TD, "text-right")}>
+                    <div className="inline-flex gap-1.5">
+                      <RowBtn onClick={() => setEdit(r)}>Rename</RowBtn>
+                      <RowBtn onClick={() => run(() => setRoleTypeActive(r.id, !r.isActive), r.isActive ? "Deactivated" : "Reactivated")}>
+                        {r.isActive ? "Deactivate" : "Reactivate"}
+                      </RowBtn>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <FormModal
+        open={!!edit}
+        title={`Rename “${edit?.label ?? ""}”`}
+        description="Renaming propagates to every experience already using this role (kept in sync)."
+        fields={[{ key: "label", label: "Role", value: edit?.label ?? "", required: true }]}
+        confirmLabel="Save"
+        busy={pending}
+        onClose={() => setEdit(null)}
+        onConfirm={(v) => {
+          const target = edit;
+          if (!target) return;
+          run(() => renameRoleType(target.id, v.label), "Role renamed", () => setEdit(null));
         }}
       />
     </>
@@ -558,27 +704,47 @@ function FormModal({
   );
 }
 
+// The target company is chosen via a server search (the full list isn't loaded
+// client-side now that companies are paginated).
 function MergeModal({
   source,
-  companies,
   busy,
   onConfirm,
   onClose,
 }: {
   source: OpsCompanyRow | null;
-  companies: OpsCompanyRow[];
   busy: boolean;
   onConfirm: (targetId: string) => void;
   onClose: () => void;
 }) {
-  const others = companies.filter((c) => c.id !== source?.id);
-  const [target, setTarget] = useState("");
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<{ id: string; name: string; industry: string }[]>([]);
+  const [target, setTarget] = useState<{ id: string; name: string } | null>(null);
   const key = source?.id ?? "";
   const [seedKey, setSeedKey] = useState("");
   if (source && key !== seedKey) {
-    setTarget("");
     setSeedKey(key);
+    setQ("");
+    setResults([]);
+    setTarget(null);
   }
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await searchCompaniesForResolve(term);
+        setResults(res.filter((c) => c.id !== source?.id));
+      } catch {
+        setResults([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, source?.id]);
 
   return (
     <Modal
@@ -587,19 +753,45 @@ function MergeModal({
       title={`Merge “${source?.name ?? ""}” into…`}
       description={`All ${source?.experiences ?? 0} posts move to the target; “${source?.name ?? ""}” and its aliases become aliases of the target, then it's deleted. This can't be undone.`}
     >
-      <Select variant="sort" value={target} onChange={(e) => setTarget(e.target.value)} className="w-full">
-        <option value="">Select the company to keep…</option>
-        {others.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name} ({c.experiences})
-          </option>
-        ))}
-      </Select>
+      {target ? (
+        <div className="flex items-center justify-between rounded-md border border-blue-border bg-blue-soft px-3 py-2 text-[13px]">
+          <span>
+            Keep <b className="font-semibold">{target.name}</b>
+          </span>
+          <button type="button" onClick={() => setTarget(null)} className="text-[12px] text-fg-3 hover:text-fg">
+            Change
+          </button>
+        </div>
+      ) : (
+        <>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search the company to keep…"
+            className={INPUT}
+          />
+          {results.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {results.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setTarget({ id: c.id, name: c.name })}
+                  className="flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2 text-left text-[13px] hover:border-blue-border"
+                >
+                  <b className="font-semibold">{c.name}</b>
+                  {c.industry && <span className="text-[11.5px] text-fg-3">{c.industry}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
       <div className="mt-3.5 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
         <Button
           disabled={busy || !target}
-          onClick={() => onConfirm(target)}
+          onClick={() => target && onConfirm(target.id)}
           className={cn("border-red-border bg-red-soft text-red hover:bg-[rgba(239,90,90,0.2)]", (busy || !target) && "cursor-not-allowed opacity-50")}
         >
           {busy ? "Merging…" : "Merge & delete source"}

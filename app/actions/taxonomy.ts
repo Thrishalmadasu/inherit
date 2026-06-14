@@ -3,22 +3,35 @@
 // the canonical companies / round types / topics shapes every student's
 // choices and a merge moves real data. The action layer enforces the gate; the
 // cores re-assert it (defense in depth).
-import { requireModerator } from "@/lib/auth";
+import { requireModerator, requireOps } from "@/lib/auth";
+import { listOpsCompanies, type OpsCompanyRow, type Paginated } from "@/lib/db/queries";
 import {
   addCompanyAliasCore,
   addCompanyCore,
+  addRoleTypeCore,
   addRoundTypeCore,
   addTopicCore,
   mergeCompaniesCore,
   renameCompanyCore,
+  renameRoleTypeCore,
   renameRoundTypeCore,
   renameTopicCore,
+  setRoleTypeActiveCore,
   setRoundTypeActiveCore,
   setTopicActiveCore,
 } from "@/lib/write/taxonomy";
 import { runAction, runActionData, type ActionDataResult, type ActionResult } from "@/lib/write/run";
 
 type TagCategory = "dsa" | "system_design" | "behavioral" | "tooling" | "domain" | "other";
+
+// Paginated/searchable companies read for the taxonomy admin (any Ops user).
+export async function fetchOpsCompanies(opts: {
+  q?: string;
+  page?: number;
+}): Promise<Paginated<OpsCompanyRow>> {
+  await requireOps();
+  return listOpsCompanies(opts);
+}
 
 // ── Companies ──
 export async function addCompany(input: {
@@ -65,6 +78,22 @@ export async function renameRoundType(id: string, label: string): Promise<Action
 export async function setRoundTypeActive(id: string, isActive: boolean): Promise<ActionResult> {
   const actor = await requireModerator();
   return runAction(() => setRoundTypeActiveCore(actor, id, isActive));
+}
+
+// ── Role types ──
+export async function addRoleType(label: string): Promise<ActionResult> {
+  const actor = await requireModerator();
+  return runAction(() => addRoleTypeCore(actor, label));
+}
+
+export async function renameRoleType(id: string, label: string): Promise<ActionResult> {
+  const actor = await requireModerator();
+  return runAction(() => renameRoleTypeCore(actor, id, label));
+}
+
+export async function setRoleTypeActive(id: string, isActive: boolean): Promise<ActionResult> {
+  const actor = await requireModerator();
+  return runAction(() => setRoleTypeActiveCore(actor, id, isActive));
 }
 
 // ── Topics ──

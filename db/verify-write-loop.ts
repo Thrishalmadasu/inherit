@@ -20,6 +20,7 @@ import {
   getCompanyPage,
   listOpsCompanies,
   listOpsPublished,
+  listOpsRoleTypes,
   listOpsRoundTypes,
   listOpsUsers,
   listRecentRoleChanges,
@@ -33,13 +34,16 @@ import {
   hideCore,
   rejectCore,
   resolveExperienceCompanyCore,
+  resolveExperienceRoleCore,
   suggestEditsCore,
   unhideCore,
 } from "../lib/write/moderation";
 import {
   addCompanyCore,
+  addRoleTypeCore,
   addRoundTypeCore,
   mergeCompaniesCore,
+  renameRoleTypeCore,
   renameRoundTypeCore,
   setRoundTypeActiveCore,
 } from "../lib/write/taxonomy";
@@ -777,8 +781,8 @@ async function main() {
   // Share-form options + Ops taxonomy reads.
   const shareOpts = await getShareFormOptions();
   ok(
-    shareOpts.roundTypes.includes("OA") && shareOpts.companies.some((c) => c.name === "Amazon"),
-    "getShareFormOptions exposes active round types + canonical companies",
+    shareOpts.roundTypes.includes("OA"),
+    "getShareFormOptions exposes active round types",
   );
   ok(
     shareOpts.topics.some((t) => t.label === "Sliding Window"),
@@ -790,11 +794,61 @@ async function main() {
     !(await getShareFormOptions()).roundTypes.includes("Bar Raiser"),
     "a deactivated round type drops out of the share-form list",
   );
-  const opsCos = await listOpsCompanies("acme");
-  ok(opsCos.some((c) => c.name === "Acme Corporation"), "listOpsCompanies search matches by name/alias");
+  const opsCos = await listOpsCompanies({ q: "acme" });
+  ok(
+    opsCos.items.some((c) => c.name === "Acme Corporation") && opsCos.total >= 1,
+    "listOpsCompanies search matches by name/alias (paginated)",
+  );
   ok(
     (await listOpsRoundTypes()).some((r) => r.label === "Pairing Round"),
     "listOpsRoundTypes returns the managed round vocabulary",
+  );
+
+  console.log("\n— concern #10: canonical roles (propose-at-review like companies) —");
+  const propRoleId = await submitExperienceCore(student1, form("Amazon", { role: "Quantum Intern" }));
+  let propRoleRow = await expRow(propRoleId);
+  ok(
+    propRoleRow.roleTypeId === null && propRoleRow.roleTitle === "Quantum Intern",
+    "unknown role rides as a proposal (roleTypeId null, roleTitle = typed text)",
+  );
+  ok(
+    (await rejects(() => approveCore(moderator, propRoleId))).includes("Resolve the proposed role"),
+    "approve is blocked until the proposed role is resolved",
+  );
+  const promotedRole = await resolveExperienceRoleCore(moderator, propRoleId, {
+    newRole: { label: "Quantum Intern" },
+  });
+  ok(promotedRole.role === "Quantum Intern", "moderator promotes the proposed role to canonical");
+  propRoleRow = await expRow(propRoleId);
+  ok(propRoleRow.roleTypeId != null, "experience binds to the canonical role type");
+  await approveCore(moderator, propRoleId);
+  ok((await visibleEverywhere(propRoleId, "amazon")).feed, "resolved role + company → visible");
+
+  const varRoleId = await submitExperienceCore(student2, form("Amazon", { role: "SDE Intern (summer)" }));
+  ok((await expRow(varRoleId)).roleTypeId === null, "a variant role rides as proposed");
+  const [sdeIntern] = await db.select().from(s.roleTypes).where(eq(s.roleTypes.label, "SDE Intern"));
+  await resolveExperienceRoleCore(moderator, varRoleId, { existingRoleTypeId: sdeIntern.id });
+  const mappedRole = await expRow(varRoleId);
+  ok(
+    mappedRole.roleTypeId === sdeIntern.id && mappedRole.roleTitle === "SDE Intern",
+    "mapping binds the experience + relabels roleTitle to the canonical role",
+  );
+
+  ok(
+    (await rejects(() => addRoleTypeCore(moderator, "SDE Intern"))).includes("already exists"),
+    "adding a duplicate role type is rejected",
+  );
+  await addRoleTypeCore(moderator, "Platform Intern");
+  const ptRoleExp = await submitExperienceCore(student1, form("Amazon", { role: "Platform Intern" }));
+  const [ptType] = await db.select().from(s.roleTypes).where(eq(s.roleTypes.label, "Platform Intern"));
+  await renameRoleTypeCore(moderator, ptType.id, "Platform Engineer Intern");
+  ok(
+    (await expRow(ptRoleExp)).roleTitle === "Platform Engineer Intern",
+    "renaming a role type propagates to experiences.roleTitle",
+  );
+  ok(
+    (await listOpsRoleTypes()).some((r) => r.label === "Platform Engineer Intern"),
+    "listOpsRoleTypes returns the managed role vocabulary",
   );
 
   console.log("\n— Ops search: queue + published filter server-side —");

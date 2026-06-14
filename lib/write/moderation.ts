@@ -93,6 +93,8 @@ export async function approveCore(actor: DbUser, expId: string): Promise<void> {
     throw new WriteError(
       `Resolve the proposed company “${exp.proposedCompanyName ?? ""}” before approving`,
     );
+  if (!exp.roleTypeId)
+    throw new WriteError(`Resolve the proposed role “${exp.roleTitle}” before approving`);
   await db.batch([
     db
       .update(s.experiences)
@@ -287,6 +289,75 @@ export async function resolveExperienceCompanyCore(
     .set({ companyId: created.id, proposedCompanyName: null })
     .where(eq(s.experiences.id, expId));
   return { companyName: created.name };
+}
+
+// ── Resolve a proposed role during review (concern #10, roles) ───────────────
+// Mirror of the company resolver. The student named a role that wasn't
+// canonical (roleTypeId NULL, roleTitle = the proposed text). The moderator MAPS
+// it to an existing role type or PROMOTES it to a new canonical role. Either way
+// roleTypeId is set + roleTitle becomes the canonical label, so approval unblocks.
+export type RoleResolution =
+  | { existingRoleTypeId: string }
+  | { newRole: { label: string } };
+
+async function uniqueRoleSlug(base: string): Promise<string> {
+  const root = slugify(base) || "role";
+  let slug = root;
+  for (let i = 2; ; i++) {
+    const [clash] = await db
+      .select({ id: s.roleTypes.id })
+      .from(s.roleTypes)
+      .where(eq(s.roleTypes.slug, slug));
+    if (!clash) return slug;
+    slug = `${root}-${i}`;
+  }
+}
+
+export async function resolveExperienceRoleCore(
+  actor: DbUser,
+  expId: string,
+  resolution: RoleResolution,
+): Promise<{ role: string }> {
+  const exp = await loadExp(expId);
+  if (exp.roleTypeId) throw new WriteError("This post's role is already resolved");
+
+  if ("existingRoleTypeId" in resolution) {
+    const [target] = await db
+      .select()
+      .from(s.roleTypes)
+      .where(eq(s.roleTypes.id, resolution.existingRoleTypeId));
+    if (!target) throw new WriteError("Role not found");
+    await db
+      .update(s.experiences)
+      .set({ roleTypeId: target.id, roleTitle: target.label })
+      .where(eq(s.experiences.id, expId));
+    return { role: target.label };
+  }
+
+  const label = resolution.newRole.label.trim() || exp.roleTitle.trim();
+  if (!label) throw new WriteError("A role is required");
+  const [existing] = await db
+    .select({ id: s.roleTypes.id, label: s.roleTypes.label })
+    .from(s.roleTypes)
+    .where(sql`lower(${s.roleTypes.label}) = ${label.toLowerCase()}`);
+  if (existing) {
+    await db
+      .update(s.experiences)
+      .set({ roleTypeId: existing.id, roleTitle: existing.label })
+      .where(eq(s.experiences.id, expId));
+    return { role: existing.label };
+  }
+
+  const slug = await uniqueRoleSlug(label);
+  const [created] = await db
+    .insert(s.roleTypes)
+    .values({ label, slug, createdBy: actor.id })
+    .returning({ id: s.roleTypes.id, label: s.roleTypes.label });
+  await db
+    .update(s.experiences)
+    .set({ roleTypeId: created.id, roleTitle: created.label })
+    .where(eq(s.experiences.id, expId));
+  return { role: created.label };
 }
 
 // Pending count for the Ops nav badge.

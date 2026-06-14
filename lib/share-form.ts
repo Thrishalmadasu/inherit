@@ -8,27 +8,27 @@ import type {
   ShareDraftForm,
 } from "@/lib/draft";
 
-// Companies and round types are now sourced from the canonical DB tables
-// (concern #10), passed into the share form as props - there is no static
-// company/round list to drift. `ShareFormOptions` is the server→form contract.
+// Canonical vocabularies (companies / round types / topics / roles) all live in
+// DB tables now (concern #10). Companies + roles are server-side typeaheads, so
+// they're NOT shipped to the form; round types + topics ride along as props.
 export interface ShareFormOptions {
-  companies: { name: string; industry: string }[];
   roundTypes: string[];
   topics: { label: string; category: string }[];
 }
 
-export const ROLE_SUGGESTIONS = [
-  { name: "SDE Intern", hint: "Software" },
-  { name: "SDE-1", hint: "Software" },
-  { name: "SDE-2", hint: "Software" },
-  { name: "Backend Intern", hint: "Software" },
-  { name: "Frontend Intern", hint: "Software" },
-  { name: "Data Analyst", hint: "Data" },
-  { name: "Data Scientist", hint: "Data" },
-  { name: "ML Intern", hint: "Data" },
-  { name: "PM Intern", hint: "Product" },
-  { name: "DevOps Intern", hint: "Infra" },
-];
+// Seed list for the canonical `role_types` table (Ops can add more in-app).
+export const ROLE_TYPE_SEED = [
+  "SDE Intern",
+  "SDE-1",
+  "SDE-2",
+  "Backend Intern",
+  "Frontend Intern",
+  "Data Analyst",
+  "Data Scientist",
+  "ML Intern",
+  "PM Intern",
+  "DevOps Intern",
+] as const;
 
 export const YEARS = [2026, 2025, 2024, 2023];
 

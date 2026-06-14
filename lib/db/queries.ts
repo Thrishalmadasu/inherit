@@ -237,6 +237,65 @@ export async function listCompanies(): Promise<CompanyListItem[]> {
     .sort((a, b) => b.count - a.count);
 }
 
+// Paginated /companies grid: ordered by visible-experience count desc (most
+// active first), then name; `q` matches name / industry / alias. Counts +
+// latest come from correlated subqueries so ordering + paging happen in SQL
+// (no whole-corpus hydration). Default 10/page.
+export async function listCompaniesPage(opts?: {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+}): Promise<Paginated<CompanyListItem>> {
+  const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
+  const term = opts?.q?.trim()?.toLowerCase();
+  const like = term ? `%${term}%` : null;
+  const where = like
+    ? sql`(lower(${s.companies.name}) like ${like}
+           or lower(coalesce(${s.companies.industry}, '')) like ${like}
+           or exists (select 1 from unnest(${s.companies.aliases}) a where lower(a) like ${like}))`
+    : undefined;
+  // Visible-experience count + latest per company, as a joined subquery so the
+  // ordering + pagination happen in SQL (LEFT JOIN keeps zero-count companies).
+  const vc = db
+    .select({
+      companyId: s.experiences.companyId,
+      n: count().as("n"),
+      latest: max(s.experiences.publishedAt).as("latest"),
+    })
+    .from(s.experiences)
+    .where(visibleExp)
+    .groupBy(s.experiences.companyId)
+    .as("vc");
+  const nExpr = sql<number>`coalesce(${vc.n}, 0)`;
+
+  const [[{ total }], rows] = await Promise.all([
+    db.select({ total: count() }).from(s.companies).where(where),
+    db
+      .select({
+        slug: s.companies.slug,
+        name: s.companies.name,
+        industry: s.companies.industry,
+        n: nExpr,
+        latest: vc.latest,
+      })
+      .from(s.companies)
+      .leftJoin(vc, eq(vc.companyId, s.companies.id))
+      .where(where)
+      .orderBy(desc(nExpr), asc(s.companies.name))
+      .limit(size)
+      .offset(offset),
+  ]);
+  const items: CompanyListItem[] = rows.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    industry: c.industry ?? "",
+    count: c.n,
+    active: false,
+    lastDays: daysSince(c.latest ?? null),
+  }));
+  return { items, total, hasMore: offset + rows.length < total };
+}
+
 export interface CompanyPageData {
   slug: string;
   name: string;
@@ -357,6 +416,23 @@ export async function searchExperiences(q: string, limit = 20): Promise<Experien
   );
   const rows = await loadWhere(where, desc(s.experiences.publishedAt), limit);
   return rows.map(toCard);
+}
+
+// Role typeahead (share form + review resolver): active canonical role types
+// matching `q`. Roles are canonical now (role_types); an unmatched typed role
+// rides as a proposal and is resolved at review.
+export async function searchRoleTypes(
+  q: string,
+  limit = 5,
+): Promise<{ id: string; label: string }[]> {
+  const t = q.trim().toLowerCase();
+  if (!t) return [];
+  return db
+    .select({ id: s.roleTypes.id, label: s.roleTypes.label })
+    .from(s.roleTypes)
+    .where(and(eq(s.roleTypes.isActive, true), sql`lower(${s.roleTypes.label}) like ${`%${t}%`}`))
+    .orderBy(asc(s.roleTypes.label))
+    .limit(limit);
 }
 
 // ── Paginated feed (Tier-3): filter + sort + paginate in SQL ─────────────────
@@ -631,6 +707,8 @@ export async function getOpsQueue(opts?: {
     // (concern #10). Null once bound to a canonical company.
     proposedCompany: l.exp.companyId ? null : (l.exp.proposedCompanyName ?? null),
     role: l.exp.roleTitle,
+    // Proposed (not-yet-canonical) role — null once bound to a role type.
+    proposedRole: l.exp.roleTypeId ? null : l.exp.roleTitle,
     round: l.rounds[0]?.name ?? "-",
     outcome: l.exp.overallOutcome,
     submittedAgo: agoOf(l.exp.createdAt),
@@ -829,11 +907,9 @@ export async function getEditPrefill(
 // are restricted to active rows; companies are the full canonical list (the
 // typeahead suggests them, and an unmatched name rides along as a proposal).
 export async function getShareFormOptions(): Promise<ShareFormOptions> {
-  const [companies, roundTypeRows, topicRows] = await Promise.all([
-    db
-      .select({ name: s.companies.name, industry: s.companies.industry })
-      .from(s.companies)
-      .orderBy(s.companies.name),
+  // Company + role are server-side typeaheads now (searchCompanies /
+  // searchRoleTitles), so we no longer ship the whole company list to the form.
+  const [roundTypeRows, topicRows] = await Promise.all([
     db
       .select({ label: s.roundTypes.label })
       .from(s.roundTypes)
@@ -846,7 +922,6 @@ export async function getShareFormOptions(): Promise<ShareFormOptions> {
       .orderBy(asc(s.topicTags.label)),
   ]);
   return {
-    companies: companies.map((c) => ({ name: c.name, industry: c.industry ?? "" })),
     roundTypes: roundTypeRows.map((r) => r.label),
     topics: topicRows.map((t) => ({ label: t.label, category: t.category })),
   };
@@ -863,24 +938,39 @@ export interface OpsCompanyRow {
   experiences: number; // total experiences bound (any status), for merge safety
 }
 
-// Companies + a bound-experience count (any review status), name-ordered. The
-// count tells Ops what a merge/rename will move. `q` matches name or alias.
-export async function listOpsCompanies(q?: string): Promise<OpsCompanyRow[]> {
-  const term = q?.trim();
+// Companies + a bound-experience count (any review status), name-ordered,
+// PAGINATED. The count tells Ops what a merge/rename will move. `q` matches
+// name or alias (server-side, so the admin scales past a handful of rows).
+export async function listOpsCompanies(opts?: {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<Paginated<OpsCompanyRow>> {
+  const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
+  const term = opts?.q?.trim();
   const where = term
     ? sql`lower(${s.companies.name}) like ${`%${term.toLowerCase()}%`}
           or exists (select 1 from unnest(${s.companies.aliases}) a
                      where lower(a) like ${`%${term.toLowerCase()}%`})`
     : undefined;
-  const [companies, counts] = await Promise.all([
-    db.select().from(s.companies).where(where).orderBy(asc(s.companies.name)),
+  // Bound-experience counts (any status) via one GROUP BY — bounded by company
+  // count, mapped onto the current page. Page is ordered by name.
+  const [[{ total }], rows, counts] = await Promise.all([
+    db.select({ total: count() }).from(s.companies).where(where),
+    db
+      .select()
+      .from(s.companies)
+      .where(where)
+      .orderBy(asc(s.companies.name))
+      .limit(size)
+      .offset(offset),
     db
       .select({ companyId: s.experiences.companyId, n: count() })
       .from(s.experiences)
       .groupBy(s.experiences.companyId),
   ]);
   const byId = new Map(counts.map((r) => [r.companyId, r.n]));
-  return companies.map((c) => ({
+  const items = rows.map((c) => ({
     id: c.id,
     name: c.name,
     slug: c.slug,
@@ -889,6 +979,7 @@ export async function listOpsCompanies(q?: string): Promise<OpsCompanyRow[]> {
     aliases: c.aliases,
     experiences: byId.get(c.id) ?? 0,
   }));
+  return { items, total, hasMore: offset + rows.length < total };
 }
 
 export interface OpsRoundTypeRow {
@@ -916,6 +1007,32 @@ export async function listOpsRoundTypes(): Promise<OpsRoundTypeRow[]> {
     position: t.position,
     isActive: t.isActive,
     uses: byName.get(t.label) ?? 0,
+  }));
+}
+
+export interface OpsRoleTypeRow {
+  id: string;
+  label: string;
+  slug: string;
+  isActive: boolean;
+  uses: number; // experiences bound to this role type, for context
+}
+
+export async function listOpsRoleTypes(): Promise<OpsRoleTypeRow[]> {
+  const [types, uses] = await Promise.all([
+    db.select().from(s.roleTypes).orderBy(asc(s.roleTypes.label)),
+    db
+      .select({ roleTypeId: s.experiences.roleTypeId, n: count() })
+      .from(s.experiences)
+      .groupBy(s.experiences.roleTypeId),
+  ]);
+  const byId = new Map(uses.map((r) => [r.roleTypeId, r.n]));
+  return types.map((t) => ({
+    id: t.id,
+    label: t.label,
+    slug: t.slug,
+    isActive: t.isActive,
+    uses: byId.get(t.id) ?? 0,
   }));
 }
 

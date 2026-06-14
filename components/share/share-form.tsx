@@ -23,7 +23,6 @@ import {
 } from "@/lib/draft";
 import {
   OUTCOMES,
-  ROLE_SUGGESTIONS,
   STEPS,
   YEARS,
   completionPct,
@@ -33,6 +32,7 @@ import {
   type ShareFormOptions,
 } from "@/lib/share-form";
 import { submitExperience } from "@/app/actions/experiences";
+import { searchCompanyOptions, searchRoleOptions } from "@/app/actions/share";
 import { firstIssue, sanitizeShareForm, sharePayloadSchema } from "@/lib/validations/experience";
 import type { ReviewStatus } from "@/lib/types";
 
@@ -259,20 +259,25 @@ function StepBasics({
         </ul>
       )}
 
-      <Combo
+      <SearchCombo
         label="Company"
         value={form.company}
         onChange={(company) => update({ company })}
         placeholder="Start typing - e.g. Amazon"
-        options={options.companies.map((c) => ({ main: c.name, sub: c.industry }))}
+        search={async (q) =>
+          (await searchCompanyOptions(q)).map((c) => ({ main: c.name, sub: c.industry }))
+        }
         hint="Pick from the list where you can. A new company is reviewed by Ops before it's added."
       />
-      <Combo
+      <SearchCombo
         label="Role"
         value={form.role}
         onChange={(role) => update({ role })}
-        placeholder="e.g. SDE Intern"
-        options={ROLE_SUGGESTIONS.map((r) => ({ main: r.name, sub: r.hint }))}
+        placeholder="Start typing - e.g. SDE Intern"
+        search={async (q) =>
+          (await searchRoleOptions(q)).map((r) => ({ main: r.label, sub: "" }))
+        }
+        hint="Pick from the list where you can. A new role is reviewed by Ops before it's added."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3.5 max-md:grid-cols-1">
@@ -669,32 +674,55 @@ function SummaryK({ k, v }: { k: string; v: string }) {
   );
 }
 
-// ── Combo (autocomplete input) ───────────────────────────────────────────────
-function Combo({
+// ── SearchCombo (server-side typeahead, ≤5 results) ──────────────────────────
+// Debounced search against a canonical DB list (companies / role types). Free
+// text is allowed: a value with no exact match rides along as a PROPOSAL that
+// Ops resolves at review (concern #10). The search fn is held in a ref so its
+// changing identity (inline arrow) doesn't re-fire the effect every render.
+function SearchCombo({
   label,
   value,
   onChange,
   placeholder,
-  options,
+  search,
   hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
-  options: { main: string; sub: string }[];
+  search: (q: string) => Promise<{ main: string; sub: string }[]>;
   hint?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const matches = useMemo(() => {
-    const t = value.trim().toLowerCase();
-    const list = t ? options.filter((o) => o.main.toLowerCase().includes(t)) : options;
-    return list.slice(0, 6);
-  }, [value, options]);
-  const isNew = useMemo(() => {
-    const t = value.trim().toLowerCase();
-    return t.length > 0 && !options.some((o) => o.main.toLowerCase() === t);
-  }, [value, options]);
+  const [results, setResults] = useState<{ main: string; sub: string }[]>([]);
+  const searchRef = useRef(search);
+  searchRef.current = search;
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const term = value.trim();
+    if (debRef.current) clearTimeout(debRef.current);
+    if (!term) {
+      setResults([]);
+      return;
+    }
+    debRef.current = setTimeout(async () => {
+      try {
+        setResults(await searchRef.current(term));
+      } catch {
+        setResults([]);
+      }
+    }, 250);
+    return () => {
+      if (debRef.current) clearTimeout(debRef.current);
+    };
+  }, [value]);
+
+  const exact =
+    value.trim().length > 0 &&
+    results.some((r) => r.main.toLowerCase() === value.trim().toLowerCase());
+  const isNew = value.trim().length > 0 && !exact;
 
   return (
     <label className="relative mb-4 flex flex-col gap-[7px]">
@@ -710,9 +738,9 @@ function Combo({
         placeholder={placeholder}
         className={INPUT}
       />
-      {open && matches.length > 0 && (
+      {open && results.length > 0 && (
         <div className="absolute inset-x-0 top-[calc(100%+6px)] z-10 overflow-hidden rounded-md border border-border-strong bg-surface shadow-[0_14px_40px_-8px_rgba(0,0,0,0.6)]">
-          {matches.map((o) => (
+          {results.map((o) => (
             <button
               key={o.main}
               type="button"
@@ -727,7 +755,7 @@ function Combo({
                 {o.main[0]}
               </span>
               {o.main}
-              <span className="ml-auto text-[11.5px] text-fg-3">{o.sub}</span>
+              {o.sub && <span className="ml-auto text-[11.5px] text-fg-3">{o.sub}</span>}
             </button>
           ))}
         </div>

@@ -380,7 +380,7 @@ export interface FeedPage {
 }
 
 export async function listFeedPage(opts: FeedQuery = {}): Promise<FeedPage> {
-  const pageSize = Math.min(Math.max(opts.pageSize ?? 20, 1), 50);
+  const pageSize = Math.min(Math.max(opts.pageSize ?? 10, 1), 50);
   const page = Math.max(opts.page ?? 1, 1);
   const offset = (page - 1) * pageSize;
 
@@ -455,7 +455,7 @@ export interface Paginated<T> {
 }
 
 const pageBounds = (page?: number, pageSize?: number, max = 50) => {
-  const size = Math.min(Math.max(pageSize ?? 20, 1), max);
+  const size = Math.min(Math.max(pageSize ?? 10, 1), max);
   const p = Math.max(page ?? 1, 1);
   return { size, offset: (p - 1) * size };
 };
@@ -701,7 +701,7 @@ export async function listOpsUsers(opts?: {
   page?: number;
   pageSize?: number;
 }): Promise<OpsUsersPage> {
-  const pageSize = Math.min(Math.max(opts?.pageSize ?? 20, 1), 100);
+  const pageSize = Math.min(Math.max(opts?.pageSize ?? 10, 1), 100);
   const page = Math.max(opts?.page ?? 1, 1);
   const q = opts?.q?.trim();
   const where = q

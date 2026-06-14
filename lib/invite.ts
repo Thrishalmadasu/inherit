@@ -108,9 +108,36 @@ export const ISSUE_COPY: Record<RecipientIssue, string> = {
   invalid_email: "Invalid email",
 };
 
-// No dedupe: every row with a valid email is "ready". The only "error" is a
-// missing or malformed email (can't be sent). Duplicates and previously
-// invited/shared students all send — that's the point (per-experience invites).
+// The five fields a recipient carries, however they were entered (CSV row or
+// the manual add-recipient form). Shared so CSV and manual rows validate
+// IDENTICALLY — the server re-runs this classifier on both (client untrusted).
+export interface RecipientFields {
+  name: string;
+  email: string;
+  company: string;
+  role: string;
+  round: string;
+}
+
+// No dedupe: a valid email is "ready". The only "error" is a missing/malformed
+// email (can't be sent). Duplicates and re-runs all send (per-experience).
+export function classifyRecipient(fields: Partial<RecipientFields>, id: string): ParsedRecipient {
+  const email = (fields.email || "").trim().toLowerCase();
+  const issues: RecipientIssue[] = [];
+  if (!email) issues.push("missing_email");
+  else if (!EMAIL_RE.test(email)) issues.push("invalid_email");
+  return {
+    id,
+    name: (fields.name || "").trim(),
+    email,
+    company: (fields.company || "").trim(),
+    role: (fields.role || "").trim(),
+    round: (fields.round || "").trim(),
+    status: issues.length ? "error" : "ready",
+    issues,
+  };
+}
+
 export function buildRecipients(rows: string[][]): ParsedRecipient[] {
   if (!rows.length) return [];
   const headerMap = mapHeaders(rows[0]);
@@ -118,19 +145,20 @@ export function buildRecipients(rows: string[][]): ParsedRecipient[] {
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
     const get = (k: string) => (headerMap[k] != null ? (row[headerMap[k]] || "").trim() : "");
-    const email = get("email").toLowerCase();
-    const name = get("name");
-    const company = get("company");
-    const role = get("role");
-    const round = get("round");
-    const issues: RecipientIssue[] = [];
-    if (!email) issues.push("missing_email");
-    else if (!EMAIL_RE.test(email)) issues.push("invalid_email");
-
-    const status: RecipientStatus = issues.length ? "error" : "ready";
-    out.push({ id: `r-${r}`, name, email, company, role, round, status, issues });
+    out.push(
+      classifyRecipient(
+        { name: get("name"), email: get("email"), company: get("company"), role: get("role"), round: get("round") },
+        `r-${r}`,
+      ),
+    );
   }
   return out;
+}
+
+// Manually-entered recipients (the add-recipient form) — validated by the SAME
+// classifier as CSV rows. `m-` ids distinguish them in the UI (removable).
+export function buildManualRecipients(rows: RecipientFields[]): ParsedRecipient[] {
+  return rows.map((f, i) => classifyRecipient(f, `m-${i}`));
 }
 
 // ── Merge tags + template defaults ───────────────────────────────────────────

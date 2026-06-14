@@ -26,9 +26,11 @@ import {
   MERGE_TAGS,
   SAMPLE_CSV,
   applyMerge,
+  buildManualRecipients,
   buildRecipients,
   parseCsv,
   type ParsedRecipient,
+  type RecipientFields,
   type RecipientStatus,
 } from "@/lib/invite";
 
@@ -39,6 +41,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
   const viewer = useViewer();
 
   const [rawCsv, setRawCsv] = useState("");
+  const [manual, setManual] = useState<RecipientFields[]>([]);
   const [fileName, setFileName] = useState("");
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [body, setBody] = useState(DEFAULT_BODY);
@@ -51,7 +54,11 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
   const [focusTarget, setFocusTarget] = useState<"subject" | "body">("body");
 
   const parsed = useMemo(() => (rawCsv ? parseCsv(rawCsv) : []), [rawCsv]);
-  const recipients = useMemo(() => buildRecipients(parsed), [parsed]);
+  // CSV rows first, then manually-entered rows — same order the server uses.
+  const recipients = useMemo(
+    () => [...buildRecipients(parsed), ...buildManualRecipients(manual)],
+    [parsed, manual],
+  );
 
   const readyRecipients = recipients.filter((r) => r.status === "ready");
   const sampleRecipient = readyRecipients[0] || recipients[0] || null;
@@ -59,6 +66,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
     ready: readyRecipients.length,
     error: recipients.filter((r) => r.status === "error").length,
   };
+  const hasInput = !!rawCsv || manual.length > 0;
 
   const setCsv = (text: string, name?: string) => {
     setRawCsv(text);
@@ -66,8 +74,22 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
     setFilter("all");
     setJustSent(null);
   };
-  const clearCsv = () => {
+  const addManual = (fields: RecipientFields) => {
+    setManual((m) => [...m, fields]);
+    setFilter("all");
+    setJustSent(null);
+  };
+  const removeManual = (index: number) =>
+    setManual((m) => m.filter((_, i) => i !== index));
+  // Clear just the uploaded file (manual entries survive); vs. clear everything.
+  const clearCsvOnly = () => {
     setRawCsv("");
+    setFileName("");
+    setFilter("all");
+  };
+  const clearAll = () => {
+    setRawCsv("");
+    setManual([]);
     setFileName("");
     setFilter("all");
   };
@@ -97,7 +119,8 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
     setSending(true);
     const result = await sendInvites({
       csv: rawCsv,
-      fileName: fileName || null,
+      manual,
+      fileName: fileName || (manual.length ? "manual entry" : null),
       subject,
       body,
     });
@@ -107,7 +130,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
       return;
     }
     setJustSent(result.data);
-    clearCsv();
+    clearAll();
   };
 
   return (
@@ -151,17 +174,23 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
         <div className={CARD}>
           <CardHeader
             n={1}
-            title="Upload recipients"
-            sub="Drop a CSV of students you'd like to nudge — one row per experience you want them to write up. Every row with a valid email gets an invite (no dedupe; duplicates and re-runs all send)."
+            title="Add recipients"
+            sub="Drop a CSV of students you'd like to nudge — or add them one at a time below. One row per experience you want written up. Every row with a valid email gets an invite (no dedupe; duplicates and re-runs all send)."
           />
           <DropZone
             onCsv={setCsv}
             hasFile={!!rawCsv}
             fileName={fileName}
             rowCount={Math.max(0, parsed.length - 1)}
-            onClear={clearCsv}
+            onClear={clearCsvOnly}
           />
-          <RecipientsTable recipients={recipients} filter={filter} onFilter={setFilter} />
+          <ManualAdd onAdd={addManual} />
+          <RecipientsTable
+            recipients={recipients}
+            filter={filter}
+            onFilter={setFilter}
+            onRemoveManual={removeManual}
+          />
         </div>
 
         {/* ── Step 2 · Compose ─────────────────────────────────────────── */}
@@ -169,7 +198,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
           <CardHeader
             n={2}
             title="Compose the invite"
-            sub="Merge tags fill in per recipient. The preview on the right uses the first ready recipient from your CSV."
+            sub="Merge tags fill in per recipient. The preview on the right uses the first ready recipient from your list."
           />
 
           <MergeTagsBar onInsert={insertTag} />
@@ -240,7 +269,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
             </span>
           </div>
           <div className="ml-auto flex gap-2.5">
-            <Button onClick={clearCsv} disabled={!rawCsv} className={cn(!rawCsv && "opacity-40")}>
+            <Button onClick={clearAll} disabled={!hasInput} className={cn(!hasInput && "opacity-40")}>
               Reset
             </Button>
             <Button
@@ -467,6 +496,87 @@ function CsvCode({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Manual add-recipient (no CSV needed) ─────────────────────────────────────
+const EMPTY_FIELDS: RecipientFields = { name: "", email: "", company: "", role: "", round: "" };
+
+function ManualAdd({ onAdd }: { onAdd: (fields: RecipientFields) => void }) {
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState<RecipientFields>(EMPTY_FIELDS);
+  const set = (patch: Partial<RecipientFields>) => setFields((f) => ({ ...f, ...patch }));
+
+  const submit = () => {
+    if (!fields.email.trim()) return;
+    onAdd({ ...fields });
+    setFields(EMPTY_FIELDS);
+  };
+
+  const INPUT =
+    "h-9 w-full rounded-md border border-border bg-bg-2 px-3 text-[13px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_3px_var(--color-blue-soft)]";
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-1.5 text-[12.5px] font-medium text-fg-2 hover:border-blue-border hover:bg-blue-soft hover:text-blue"
+      >
+        <Icon.plus className="size-3.5" /> Add a recipient manually
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-bg-2 p-3.5">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3">
+          Add a recipient
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setFields(EMPTY_FIELDS);
+          }}
+          aria-label="Close"
+          className="grid size-[22px] place-items-center rounded-full text-fg-3 hover:bg-surface-3 hover:text-fg"
+        >
+          <Icon.x className="size-3" />
+        </button>
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 max-[900px]:grid-cols-2"
+      >
+        <input value={fields.name} onChange={(e) => set({ name: e.target.value })} placeholder="Name" className={INPUT} />
+        <input
+          value={fields.email}
+          onChange={(e) => set({ email: e.target.value })}
+          placeholder="email@sst.scaler.com"
+          type="email"
+          className={INPUT}
+        />
+        <input value={fields.company} onChange={(e) => set({ company: e.target.value })} placeholder="Company" className={INPUT} />
+        <input value={fields.role} onChange={(e) => set({ role: e.target.value })} placeholder="Role" className={INPUT} />
+        <input value={fields.round} onChange={(e) => set({ round: e.target.value })} placeholder="Round" className={INPUT} />
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={!fields.email.trim()}
+          className={cn("max-[900px]:col-span-2", !fields.email.trim() && "opacity-40")}
+        >
+          <Icon.plus className="size-3.5" /> Add
+        </Button>
+      </form>
+      <p className="mt-2 text-[11.5px] text-fg-3">
+        Email is required; the rest fill the merge tags. Added recipients appear in the list below.
+      </p>
+    </div>
+  );
+}
+
 // ── Recipients table with bucket chips ───────────────────────────────────────
 function StatusPill({ status }: { status: RecipientStatus }) {
   if (status === "ready")
@@ -489,10 +599,12 @@ function RecipientsTable({
   recipients,
   filter,
   onFilter,
+  onRemoveManual,
 }: {
   recipients: ParsedRecipient[];
   filter: "all" | RecipientStatus;
   onFilter: (f: "all" | RecipientStatus) => void;
+  onRemoveManual: (index: number) => void;
 }) {
   const counts = useMemo(
     () => ({
@@ -535,37 +647,56 @@ function RecipientsTable({
           <span className="text-right">Status</span>
         </div>
         <div>
-          {visible.slice(0, 50).map((r) => (
-            <div
-              key={r.id}
-              className={cn(
-                ROW_GRID,
-                "text-[13px] [&+&]:border-t [&+&]:border-border",
-                r.status === "error" &&
-                  "bg-[linear-gradient(90deg,var(--color-red-soft),transparent_60%)]",
-              )}
-            >
-              <div>
-                <div className="font-semibold text-fg">{r.name || "—"}</div>
-                <div className={cn("mt-0.5 truncate text-xs text-fg-3", MONO)}>
-                  {r.email || <em>—</em>}
+          {visible.slice(0, 50).map((r) => {
+            const manualIndex = r.id.startsWith("m-") ? Number(r.id.slice(2)) : null;
+            return (
+              <div
+                key={r.id}
+                className={cn(
+                  ROW_GRID,
+                  "text-[13px] [&+&]:border-t [&+&]:border-border",
+                  r.status === "error" &&
+                    "bg-[linear-gradient(90deg,var(--color-red-soft),transparent_60%)]",
+                )}
+              >
+                <div>
+                  <div className="flex items-center gap-1.5 font-semibold text-fg">
+                    {r.name || "—"}
+                    {manualIndex !== null && (
+                      <span className="rounded-full border border-border bg-surface-3 px-1.5 py-px text-[9.5px] font-medium uppercase tracking-[0.04em] text-fg-3">
+                        Manual
+                      </span>
+                    )}
+                  </div>
+                  <div className={cn("mt-0.5 truncate text-xs text-fg-3", MONO)}>
+                    {r.email || <em>—</em>}
+                  </div>
+                </div>
+                <div className="text-fg-2">{r.company || "—"}</div>
+                <div>
+                  <div>{r.role || "—"}</div>
+                  {r.round && <div className="mt-0.5 text-[11.5px] text-fg-3">{r.round}</div>}
+                </div>
+                <div className="flex flex-col items-end gap-1 text-right">
+                  <StatusPill status={r.status} />
+                  {r.issues.length > 0 && (
+                    <div className="text-[11px] italic text-fg-3">
+                      {r.issues.map((i) => ISSUE_COPY[i]).join(" · ")}
+                    </div>
+                  )}
+                  {manualIndex !== null && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveManual(manualIndex)}
+                      className="text-[11px] font-medium text-fg-3 hover:text-red"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="text-fg-2">{r.company || "—"}</div>
-              <div>
-                <div>{r.role || "—"}</div>
-                {r.round && <div className="mt-0.5 text-[11.5px] text-fg-3">{r.round}</div>}
-              </div>
-              <div className="text-right">
-                <StatusPill status={r.status} />
-                {r.issues.length > 0 && (
-                  <div className="mt-1 text-[11px] italic text-fg-3">
-                    {r.issues.map((i) => ISSUE_COPY[i]).join(" · ")}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         {visible.length > 50 && (
           <div className="border-t border-border bg-white/[0.02] px-4 py-2.5 text-center text-xs text-fg-3">

@@ -415,6 +415,45 @@ async function main() {
     "re-running the SAME CSV sends again — no cross-campaign dedupe (the fix)",
   );
 
+  console.log("\n— Flow F: manually-added recipients (no CSV) —");
+  const manualRes = await sendInvitesCore(moderator, {
+    csv: "",
+    manual: [
+      { name: "Manual One", email: "manual.one.23bcs10500@sst.scaler.com", company: "Stripe", role: "SDE Intern", round: "OA" },
+      { name: "No Email", email: "", company: "Stripe", role: "SDE Intern", round: "OA" },
+    ],
+    fileName: "manual entry",
+    subject: "Share your {{company}} interview",
+    body: "Hi {{name}}.",
+  });
+  ok(
+    manualRes.sent === 1 && manualRes.errors === 1,
+    "manual recipients send with no CSV (valid sends; missing-email errors) — same classifier",
+  );
+  const mixedRes = await sendInvitesCore(moderator, {
+    csv: "name,email\nCsv Row,csv.row.23bcs10501@sst.scaler.com",
+    manual: [
+      { name: "Manual Two", email: "manual.two.23bcs10502@sst.scaler.com", company: "Stripe", role: "SDE", round: "HR" },
+    ],
+    fileName: "mixed",
+    subject: "s",
+    body: "b {{name}}",
+  });
+  ok(mixedRes.sent === 2, "CSV + manual recipients send together in one campaign");
+  const [manualCamp] = await db
+    .select()
+    .from(s.inviteCampaigns)
+    .where(eq(s.inviteCampaigns.fileName, "manual entry"));
+  const manualRecs = await db
+    .select()
+    .from(s.inviteRecipients)
+    .where(eq(s.inviteRecipients.campaignId, manualCamp.id));
+  ok(
+    manualRecs.some((r) => r.email === "manual.one.23bcs10500@sst.scaler.com" && r.status === "sent") &&
+      manualRecs.some((r) => r.email === "" && r.skipReason === "missing_email"),
+    "manual rows are recorded in the same audit trail (sent + skipped-with-reason)",
+  );
+
   console.log("\n— Flow F: dispatch failure → row marked failed, re-sendable —");
   const failEmail = "failcase.23bcs10001@sst.scaler.com";
   setEmailSenderForTest({

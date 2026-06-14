@@ -13,12 +13,35 @@ import { db, schema as s } from "@/lib/db";
 import type { DbUser } from "@/lib/auth";
 import { WriteError } from "@/lib/write/experiences";
 import { appOrigin, getEmailSender } from "@/lib/email";
-import { applyMerge, buildRecipients, parseCsv, shareLinkPath } from "@/lib/invite";
+import {
+  applyMerge,
+  buildManualRecipients,
+  buildRecipients,
+  parseCsv,
+  shareLinkPath,
+} from "@/lib/invite";
 
 type Batchable = Parameters<typeof db.batch>[0][number];
 
+const fieldStr = z.string().max(200);
+// Recipients arrive as a raw CSV (re-parsed here) and/or a list of manually
+// entered rows (the add-recipient form). Both are re-validated server-side by
+// the SAME classifier — the client is never trusted. At least one source must
+// yield a recipient (checked after building, not in the schema).
 const sendInvitesInput = z.object({
-  csv: z.string().min(1, "Upload a CSV first").max(2_000_000, "CSV is too large"),
+  csv: z.string().max(2_000_000, "CSV is too large").default(""),
+  manual: z
+    .array(
+      z.object({
+        name: fieldStr,
+        email: fieldStr,
+        company: fieldStr,
+        role: fieldStr,
+        round: fieldStr,
+      }),
+    )
+    .max(500)
+    .default([]),
   fileName: z.string().max(200).nullable(),
   subject: z.string().trim().min(1, "Subject is required").max(300),
   body: z.string().trim().min(1, "Body is required").max(10_000),
@@ -33,10 +56,15 @@ export interface SendInvitesResult {
 export async function sendInvitesCore(actor: DbUser, input: unknown): Promise<SendInvitesResult> {
   const parsed = sendInvitesInput.safeParse(input);
   if (!parsed.success) throw new WriteError(parsed.error.issues[0]?.message ?? "Invalid input");
-  const { csv, fileName, subject, body } = parsed.data;
+  const { csv, manual, fileName, subject, body } = parsed.data;
 
-  const recipients = buildRecipients(parseCsv(csv));
-  if (!recipients.length) throw new WriteError("No recipient rows found in the CSV");
+  // CSV rows first, then manually-entered rows — one combined recipient list
+  // flows through the identical dispatch + audit path.
+  const recipients = [
+    ...(csv.trim() ? buildRecipients(parseCsv(csv)) : []),
+    ...buildManualRecipients(manual),
+  ];
+  if (!recipients.length) throw new WriteError("Add at least one recipient (CSV or manual)");
 
   const ready = recipients.filter((r) => r.status === "ready");
   const errors = recipients.filter((r) => r.status === "error").length;

@@ -543,8 +543,10 @@ npx vercel deploy --prod --yes   # deploy
      CSV upload AND a manual add-recipient form (name/email/company/role/round). Manual rows are
      carried as a structured list and re-validated server-side by the SAME `classifyRecipient`
      used for CSV rows (client untrusted), then merged into one campaign. +3 harness assertions.
-   - **Still TODO from this triage:** daily moderator report email (received vs reviewed). Full
-     backlog lives in the assistant's project memory.
+   - **Deferred to a future release (post-launch):** daily moderator report email (received vs
+     reviewed) — pairs with the cron/infra work, not a launch blocker. The pre-launch triage is
+     otherwise cleared; only the broader share-form UX polish (#12) remains. Full backlog lives in
+     the assistant's project memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.

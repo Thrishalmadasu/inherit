@@ -20,18 +20,58 @@ import {
   suggestEdits,
   unhideExperience,
 } from "@/app/actions/moderation";
+import { fetchOpsPublished, fetchOpsQueue } from "@/app/actions/ops";
+import type { Paginated } from "@/lib/db/queries";
 import type { ActionResult } from "@/lib/write/run";
 import type { OpsPublishedItem, OpsQueueItem } from "@/lib/types";
 
 type View = "all" | "anonymous" | "published";
 
+// Page-1 lives in props (always fresh after router.refresh); "Load more"
+// accumulates further pages in `extra`. On a mutation we reset() + refresh, so
+// stale older pages never linger.
+function usePaged<T extends { id: string }>(
+  initial: Paginated<T>,
+  fetchPage: (page: number) => Promise<Paginated<T>>,
+) {
+  const [extra, setExtra] = useState<T[]>([]);
+  const [nextPage, setNextPage] = useState(2);
+  const [moreHasMore, setMoreHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const items = useMemo(() => [...initial.items, ...extra], [initial.items, extra]);
+  const hasMore = extra.length === 0 ? initial.hasMore : moreHasMore;
+
+  const loadMore = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchPage(nextPage);
+      setExtra((p) => [...p, ...res.items]);
+      setMoreHasMore(res.hasMore);
+      setNextPage((n) => n + 1);
+    } catch {
+      toast("Couldn't load more — please try again");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const reset = () => {
+    setExtra([]);
+    setNextPage(2);
+    setMoreHasMore(false);
+  };
+  return { items, total: initial.total, hasMore, loading, loadMore, reset };
+}
+
 export function OpsQueueView({
   queue,
+  anonymous,
   published,
   canModerate,
 }: {
-  queue: OpsQueueItem[];
-  published: OpsPublishedItem[];
+  queue: Paginated<OpsQueueItem>;
+  anonymous: Paginated<OpsQueueItem>;
+  published: Paginated<OpsPublishedItem>;
   canModerate: boolean;
 }) {
   const router = useRouter();
@@ -39,16 +79,13 @@ export function OpsQueueView({
   const [hideTarget, setHideTarget] = useState<OpsPublishedItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const counts = {
-    all: queue.length,
-    anonymous: queue.filter((q) => q.bylineAs === "anonymous").length,
-    published: published.length,
-  };
+  const allList = usePaged(queue, (page) => fetchOpsQueue({ page }));
+  const anonList = usePaged(anonymous, (page) => fetchOpsQueue({ anonymousOnly: true, page }));
+  const pubList = usePaged(published, (page) => fetchOpsPublished({ page }));
 
-  const pending = useMemo(
-    () => (view === "anonymous" ? queue.filter((q) => q.bylineAs === "anonymous") : queue),
-    [view, queue],
-  );
+  const counts = { all: allList.total, anonymous: anonList.total, published: pubList.total };
+  const queueList = view === "anonymous" ? anonList : allList;
+  const active = view === "published" ? pubList : queueList;
 
   const run = async (id: string, fn: () => Promise<ActionResult>, doneMsg: string) => {
     setBusyId(id);
@@ -59,11 +96,14 @@ export function OpsQueueView({
       return false;
     }
     toast(doneMsg);
+    allList.reset();
+    anonList.reset();
+    pubList.reset();
     router.refresh();
     return true;
   };
 
-  const oldest = queue[0];
+  const oldest = allList.items[0];
 
   return (
     <>
@@ -91,21 +131,21 @@ export function OpsQueueView({
       </div>
 
       {view !== "published" ? (
-        pending.length === 0 ? (
+        queueList.items.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
             <strong className="mb-1.5 block font-semibold text-fg">Queue is clear.</strong>
             New submissions will appear here as they come in.
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">
-            {pending.map((q) => (
+            {queueList.items.map((q) => (
               <ModCard key={q.id} item={q} busy={busyId === q.id} run={run} />
             ))}
           </div>
         )
       ) : (
         <div className="flex flex-col gap-2.5">
-          {published.map((e) => (
+          {pubList.items.map((e) => (
             <PublishedRow
               key={e.id}
               item={e}
@@ -117,6 +157,19 @@ export function OpsQueueView({
               }
             />
           ))}
+        </div>
+      )}
+
+      {active.hasMore && active.items.length > 0 && (
+        <div className="mt-5 flex justify-center">
+          <button
+            type="button"
+            onClick={active.loadMore}
+            disabled={active.loading}
+            className="h-9 rounded-md border border-border bg-surface px-5 text-[13px] font-medium text-fg-2 hover:bg-surface-3 disabled:opacity-50"
+          >
+            {active.loading ? "Loading…" : `Load more (${active.items.length} of ${active.total})`}
+          </button>
         </div>
       )}
 

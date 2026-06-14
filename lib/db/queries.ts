@@ -437,21 +437,51 @@ export async function getViewerEngagement(
 // The viewer's bookmarks, most recently saved first. Goes through visibleExp:
 // a saved post that later gets hidden/deleted/unpublished silently drops out
 // (the save row stays, so it reappears if the post comes back).
-export async function getSavedExperiences(userId: string): Promise<Experience[]> {
-  const saved = await db
-    .select({ experienceId: s.savedExperiences.experienceId })
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+const pageBounds = (page?: number, pageSize?: number, max = 50) => {
+  const size = Math.min(Math.max(pageSize ?? 20, 1), max);
+  const p = Math.max(page ?? 1, 1);
+  return { size, offset: (p - 1) * size };
+};
+
+export async function getSavedExperiences(
+  userId: string,
+  opts?: { page?: number; pageSize?: number },
+): Promise<Paginated<Experience>> {
+  const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
+  // Join saved → experiences so the visibility invariant (hidden/deleted drop
+  // out) is applied BEFORE paginating — total + page stay consistent.
+  const base = and(eq(s.savedExperiences.userId, userId), visibleExp);
+  const savedJoin = db
+    .select({ experienceId: s.savedExperiences.experienceId, savedAt: s.savedExperiences.createdAt })
     .from(s.savedExperiences)
-    .where(eq(s.savedExperiences.userId, userId))
-    .orderBy(desc(s.savedExperiences.createdAt));
-  if (saved.length === 0) return [];
-  const order = new Map(saved.map((r, i) => [r.experienceId, i]));
+    .innerJoin(s.experiences, eq(s.experiences.id, s.savedExperiences.experienceId))
+    .where(base);
+
+  const [[{ total }], idRows] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(s.savedExperiences)
+      .innerJoin(s.experiences, eq(s.experiences.id, s.savedExperiences.experienceId))
+      .where(base),
+    savedJoin.orderBy(desc(s.savedExperiences.createdAt)).limit(size).offset(offset),
+  ]);
+  if (idRows.length === 0) return { items: [], total, hasMore: false };
+
+  const order = new Map(idRows.map((r, i) => [r.experienceId, i]));
   const rows = await loadWhere(
-    and(visibleExp, inArray(s.experiences.id, saved.map((r) => r.experienceId))),
+    and(visibleExp, inArray(s.experiences.id, idRows.map((r) => r.experienceId))),
     desc(s.experiences.publishedAt),
   );
-  return rows
+  const items = rows
     .sort((a, b) => (order.get(a.exp.id) ?? 0) - (order.get(b.exp.id) ?? 0))
     .map(toCard);
+  return { items, total, hasMore: offset + idRows.length < total };
 }
 
 // ── Author-facing reads (write loop, Session 2) ──────────────────────────────
@@ -543,16 +573,23 @@ export async function getMyPendingPost(userId: string): Promise<PendingPreview |
 // FIFO is the product promise (PRD §10): oldest created_at first, no
 // fast-tracking. Resubmissions re-stamp created_at, which is what sends them
 // to the back of this very ordering.
-export async function getOpsQueue(): Promise<OpsQueueItem[]> {
-  const pending = await loadWhere(
-    and(
-      eq(s.experiences.reviewStatus, "under_review"),
-      isNull(s.experiences.withdrawnAt),
-      isNull(s.experiences.deletedAt),
-    ),
-    asc(s.experiences.createdAt),
+export async function getOpsQueue(opts?: {
+  anonymousOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+}): Promise<Paginated<OpsQueueItem>> {
+  const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
+  const where = and(
+    eq(s.experiences.reviewStatus, "under_review"),
+    isNull(s.experiences.withdrawnAt),
+    isNull(s.experiences.deletedAt),
+    opts?.anonymousOnly ? eq(s.experiences.isAnonymous, true) : undefined,
   );
-  return pending.map((l) => ({
+  const [[{ total }], pending] = await Promise.all([
+    db.select({ total: count() }).from(s.experiences).where(where),
+    loadWhere(where, asc(s.experiences.createdAt), size, offset),
+  ]);
+  const items = pending.map((l): OpsQueueItem => ({
     id: l.exp.id,
     realAuthor: {
       name: l.author.name,
@@ -571,16 +608,22 @@ export async function getOpsQueue(): Promise<OpsQueueItem[]> {
     overview: l.exp.overview ?? "",
     detail: toDetail(l),
   }));
+  return { items, total, hasMore: offset + pending.length < total };
 }
 
 // Published view for Ops: approved & not author-deleted — hidden posts stay
 // listed (flagged) so they can be unhidden.
-export async function listOpsPublished(): Promise<OpsPublishedItem[]> {
-  const rows = await loadWhere(
-    and(eq(s.experiences.reviewStatus, "approved"), isNull(s.experiences.deletedAt)),
-    desc(s.experiences.publishedAt),
-  );
-  return rows.map((l) => ({
+export async function listOpsPublished(opts?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<Paginated<OpsPublishedItem>> {
+  const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
+  const where = and(eq(s.experiences.reviewStatus, "approved"), isNull(s.experiences.deletedAt));
+  const [[{ total }], rows] = await Promise.all([
+    db.select({ total: count() }).from(s.experiences).where(where),
+    loadWhere(where, desc(s.experiences.publishedAt), size, offset),
+  ]);
+  const items = rows.map((l) => ({
     id: l.exp.id,
     company: l.company.name,
     role: l.exp.roleTitle,
@@ -592,6 +635,7 @@ export async function listOpsPublished(): Promise<OpsPublishedItem[]> {
     hiddenAt: l.exp.hiddenAt ? fmtDate(l.exp.hiddenAt) : undefined,
     hiddenReason: l.exp.hiddenReason ?? undefined,
   }));
+  return { items, total, hasMore: offset + rows.length < total };
 }
 
 // ── Ops · user/role management (paginated + searchable) ──────────────────────

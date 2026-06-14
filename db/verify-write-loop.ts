@@ -137,7 +137,7 @@ async function main() {
   console.log("\n— Flow B: student submits → under review, FIFO, invisible —");
   const id1 = await submitExperienceCore(student1, form("Amazon"));
   const id2 = await submitExperienceCore(student2, form("Microsoft", { anonymous: true }));
-  let queue = await getOpsQueue();
+  let queue = (await getOpsQueue()).items;
   ok(queue.length === 2, "queue has both submissions");
   ok(queue[0].id === id1 && queue[1].id === id2, "FIFO: first submitted is first in queue");
   ok(queue[1].bylineAs === "anonymous", "anonymous byline flagged for Ops");
@@ -174,14 +174,14 @@ async function main() {
   mine = await getMyPosts(student2.id);
   const p2 = mine.find((p) => p.id === id2);
   ok(p2?.status === "Needs Edits" && p2.opsNote?.includes("interviewer"), "author sees Needs Edits + note");
-  ok((await getOpsQueue()).length === 0, "needs_edits post left the queue");
+  ok(((await getOpsQueue()).items).length === 0, "needs_edits post left the queue");
 
   console.log("\n— Flow C: edit → resubmit joins the BACK of the queue —");
   const prefill = await getEditPrefill(id2, student2.id);
   ok(prefill?.form.rounds[0].blocks[0].topics.includes("Sliding Window"), "edit prefill restores topics from DB");
   const id3 = await submitExperienceCore(student1, form("Google")); // queued first
   await resubmitExperienceCore(student2, id2, { ...prefill!.form, role: "SDE-1" });
-  queue = await getOpsQueue();
+  queue = (await getOpsQueue()).items;
   ok(queue.length === 2 && queue[0].id === id3 && queue[1].id === id2, "resubmission is BEHIND the newer submission (back of FIFO)");
   ok(queue[1].role === "SDE-1", "resubmitted content replaced");
   mine = await getMyPosts(student2.id);
@@ -192,7 +192,7 @@ async function main() {
   await resubmitExperienceCore(student1, id1, pre1!.form);
   vis = await visibleEverywhere(id1, "amazon");
   ok(!vis.feed && !vis.direct && !vis.companyPage, "live version hidden until re-approval");
-  queue = await getOpsQueue();
+  queue = (await getOpsQueue()).items;
   ok(queue[queue.length - 1].id === id1, "edited-approved post is at the back of the queue");
   await approveCore(moderator, id1);
   ok((await visibleEverywhere(id1, "amazon")).feed, "re-approved → visible again");
@@ -232,7 +232,7 @@ async function main() {
     ),
     "hide notified the author",
   );
-  const opsPub = await listOpsPublished();
+  const opsPub = (await listOpsPublished()).items;
   ok(opsPub.find((e) => e.id === id1)?.hiddenAt != null, "Ops Published view flags the hidden post");
 
   console.log("\n— §10: unhide reverses (logged) —");
@@ -252,11 +252,11 @@ async function main() {
   console.log("\n— withdraw / resubmit —");
   const id4 = await submitExperienceCore(student2, form("Atlassian"));
   await withdrawMyPostCore(student2, id4);
-  ok(!(await getOpsQueue()).some((q) => q.id === id4), "withdrawn post left the queue");
+  ok(!((await getOpsQueue()).items).some((q) => q.id === id4), "withdrawn post left the queue");
   ok((await getMyPendingPost(student2.id))?.id !== id4, "withdrawn post is not 'pending' for the author");
   ok((await getMyPosts(student2.id)).find((p) => p.id === id4)?.status === "Withdrawn", "author sees Withdrawn");
   await resubmitWithdrawnCore(student2, id4);
-  queue = await getOpsQueue();
+  queue = (await getOpsQueue()).items;
   ok(queue[queue.length - 1].id === id4, "resubmitted withdrawal joins the back of the queue");
 
   console.log("\n— authorization edges —");
@@ -333,15 +333,15 @@ async function main() {
   console.log("\n— engagement: saves + the visibility invariant —");
   await setSavedCore(student2, id1, true);
   await setSavedCore(student2, id1, true); // idempotent
-  let savedList = await getSavedExperiences(student2.id);
+  let savedList = (await getSavedExperiences(student2.id)).items;
   ok(savedList.length === 1 && savedList[0].id === id1, "saved list shows the bookmark once");
   ok((await getViewerEngagement(student2.id, id1)).saved, "viewer-engagement read sees the save");
   await hideCore(moderator, id1, "Verify-script hide for the saved-tab invariant.");
-  ok((await getSavedExperiences(student2.id)).length === 0, "hidden post drops out of the saved list");
+  ok(((await getSavedExperiences(student2.id)).items).length === 0, "hidden post drops out of the saved list");
   await unhideCore(moderator, id1);
-  ok((await getSavedExperiences(student2.id)).length === 1, "unhide brings the bookmark back");
+  ok(((await getSavedExperiences(student2.id)).items).length === 1, "unhide brings the bookmark back");
   await setSavedCore(student2, id1, false);
-  ok((await getSavedExperiences(student2.id)).length === 0, "unsave removes it");
+  ok(((await getSavedExperiences(student2.id)).items).length === 0, "unsave removes it");
 
   console.log("\n— Flow F: invite-to-share (CSV → campaign + recipients, NO dedupe) —");
   // Header aliases on purpose (full_name/email_address/employer/position/stage).

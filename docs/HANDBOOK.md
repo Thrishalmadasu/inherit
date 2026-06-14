@@ -352,7 +352,7 @@ npm run build        # production build — must be green before deploy
 npx drizzle-kit push # apply schema changes to Neon (dev-mode; see §5 re migrations)
 npx tsx db/seed.ts   # WIPE + reseed the database (dev only!)
 npx tsx --env-file=.env.local db/verify-write-loop.ts
-                     # 89-assertion write-loop + engagement + invite + email/sheets + roles invariant test (real DB!) —
+                     # 92-assertion write-loop + engagement + invite + email/sheets + roles invariant test (real DB!) —
                      # leaves test rows behind; ALWAYS reseed after. Run before deploys.
 npx vercel deploy --prod --yes   # deploy
 ```
@@ -484,11 +484,32 @@ npx vercel deploy --prod --yes   # deploy
      `/search` uses server-side `searchExperiences` (bounded, debounced) instead of
      loading the whole corpus to filter client-side. Reads via `app/actions/{feed,
      search}.ts`. Verified by an 11-assertion read-only check.
-   - **Still TODO from this triage (priority order):** (a) paginate the remaining
-     unbounded reads — Ops queue/published tables, `getSavedExperiences`,
-     `getMyPosts`; (b) company/topic dedup design (companies are free-text
-     auto-created → dup risk); (c) daily moderator report email; (d) manual
-     add-recipient UI in invite. Full backlog lives in the assistant's project memory.
+   - ✅ **Tier-3 pagination (Ops + Saved):** `getOpsQueue` (with an `anonymousOnly`
+     server filter), `listOpsPublished`, and `getSavedExperiences` now return a
+     `Paginated<T>` ({items,total,hasMore}); the Ops queue/published tabs and the /me
+     Saved tab use "Load more" (reads via `app/actions/{ops,me}.ts`). The Ops queue
+     page seeds all/anonymous/published page-1 in parallel. `usePaged` keeps page-1
+     from props (fresh after `router.refresh`) and accumulates extra pages, resetting
+     on any moderation action. The saved query joins through `visibleExp` so
+     total/page stay consistent under the visibility invariant.
+   - **`getMyPosts` deliberately NOT paginated:** it's one author's own rows
+     (naturally bounded) AND the My Posts view mixes client-only localStorage drafts
+     with DB rows — server pagination would be disproportionate. Revisit only if a
+     user can realistically exceed ~100 posts.
+   - ✅ **Loading skeletons:** `components/ui/skeleton.tsx` (Skeleton / SkeletonCard /
+     SkeletonRow + list variants, `animate-pulse`) + `loading.tsx` for feed, search,
+     companies, company, experience, me, ops/queue, ops/users — fixes the
+     "blocks then pops in" feel on navigation (was: no loading UI, force-dynamic
+     pages blocked on DB).
+   - **Confirmed (concern #10): companies ARE effectively free-text.** The share
+     form's company `Combo` (share-form.tsx) is a plain input with autocomplete from a
+     STATIC `COMPANY_SUGGESTIONS` list (not the DB); `resolveCompanyId`
+     (lib/write/experiences.ts) auto-creates a row on any unmatched name → real dup
+     risk ("Goldman" vs "Goldman Sachs").
+   - **Still TODO from this triage (priority order):** (a) **#10** company/topic dedup
+     design — DB-backed typeahead + alias-merge + "request new" review path; (b) daily
+     moderator report email; (c) manual add-recipient UI in invite. Full backlog lives
+     in the assistant's project memory.
 
 **Per-PRD deferred (do NOT build into V1):** Ops Analytics tab, Follow-company,
 "actively hiring" indicators, comments, weekly digest, AI moderation, saved searches.

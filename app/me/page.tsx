@@ -9,7 +9,7 @@ export default async function MyPostsPage() {
   const user = await requireDbUser();
   const [posts, saved] = await Promise.all([
     getMyPosts(user.id),
-    getSavedExperiences(user.id),
+    getSavedExperiences(user.id, { page: 1 }),
   ]);
   return <MyPostsView posts={posts} saved={saved} />;
 }

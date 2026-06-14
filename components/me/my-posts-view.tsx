@@ -20,7 +20,9 @@ import {
   type ShareDraft,
 } from "@/lib/draft";
 import { deleteMyPost, restoreMyPost, resubmitWithdrawn } from "@/app/actions/my-posts";
+import { fetchSavedPage } from "@/app/actions/me";
 import { ExperienceCard } from "@/components/ui/experience-card";
+import type { Paginated } from "@/lib/db/queries";
 import type { ActionResult } from "@/lib/write/run";
 import type { Experience, MyPost, ReviewStatus } from "@/lib/types";
 
@@ -49,7 +51,13 @@ const STATUS_PILL: Record<ReviewStatus, string> = {
   Deleted: "text-fg-3 bg-gray-soft border-gray-border",
 };
 
-export function MyPostsView({ posts, saved }: { posts: MyPost[]; saved: Experience[] }) {
+export function MyPostsView({
+  posts,
+  saved,
+}: {
+  posts: MyPost[];
+  saved: Paginated<Experience>;
+}) {
   const [tab, setTab] = useState<TabId>("all");
   // Lazy init: read the autosaved draft once on mount (client-only state).
   const [draft, setDraft] = useState<ShareDraft | null>(() => {
@@ -57,17 +65,38 @@ export function MyPostsView({ posts, saved }: { posts: MyPost[]; saved: Experien
     return draftTouched(d) ? d : null;
   });
 
+  // Saved is the only growing list here (My Posts is one author's own rows —
+  // naturally bounded). Page 1 from props; "Load more" accumulates the rest.
+  const [savedExtra, setSavedExtra] = useState<Experience[]>([]);
+  const [savedNextPage, setSavedNextPage] = useState(2);
+  const [savedHasMore, setSavedHasMore] = useState(saved.hasMore);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const savedItems = useMemo(() => [...saved.items, ...savedExtra], [saved.items, savedExtra]);
+  const loadMoreSaved = async () => {
+    setSavedLoading(true);
+    try {
+      const res = await fetchSavedPage({ page: savedNextPage });
+      setSavedExtra((p) => [...p, ...res.items]);
+      setSavedHasMore(res.hasMore);
+      setSavedNextPage((n) => n + 1);
+    } catch {
+      toast("Couldn't load more — please try again");
+    } finally {
+      setSavedLoading(false);
+    }
+  };
+
   const counts = useMemo(() => {
     // "all" counts MY posts only — Saved is other people's posts, kept apart.
     const c: Record<string, number> = {
       all: posts.length,
       Draft: draft ? 1 : 0,
-      Saved: saved.length,
+      Saved: saved.total,
     };
     for (const p of posts) c[p.status] = (c[p.status] || 0) + 1;
     if (draft) c.all += 1;
     return c;
-  }, [posts, draft, saved]);
+  }, [posts, draft, saved.total]);
 
   const list = useMemo(() => {
     if (tab === "Draft" || tab === "Saved") return [];
@@ -137,7 +166,7 @@ export function MyPostsView({ posts, saved }: { posts: MyPost[]; saved: Experien
         </div>
 
         {tab === "Saved" ? (
-          saved.length === 0 ? (
+          savedItems.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
               <strong className="mb-1.5 block font-semibold text-fg">
                 Nothing saved yet.
@@ -146,11 +175,27 @@ export function MyPostsView({ posts, saved }: { posts: MyPost[]; saved: Experien
               prep for that company.
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {saved.map((e) => (
-                <ExperienceCard key={e.id} e={e} showCompany />
-              ))}
-            </div>
+            <>
+              <div className="flex flex-col gap-2.5">
+                {savedItems.map((e) => (
+                  <ExperienceCard key={e.id} e={e} showCompany />
+                ))}
+              </div>
+              {savedHasMore && (
+                <div className="mt-5 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={loadMoreSaved}
+                    disabled={savedLoading}
+                    className="h-9 rounded-md border border-border bg-surface px-5 text-[13px] font-medium text-fg-2 hover:bg-surface-3 disabled:opacity-50"
+                  >
+                    {savedLoading
+                      ? "Loading…"
+                      : `Load more (${savedItems.length} of ${saved.total})`}
+                  </button>
+                </div>
+              )}
+            </>
           )
         ) : list.length === 0 && !showDraft ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">

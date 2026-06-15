@@ -4,7 +4,7 @@
 //
 // Rows are mapped to the shared DTO shapes (lib/types.ts) so the client
 // views stay unchanged.
-import { and, asc, count, desc, eq, ilike, inArray, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, schema as s } from "@/lib/db";
 import type {
@@ -130,18 +130,12 @@ const loadVisible = () => loadWhere(visibleExp, desc(s.experiences.publishedAt))
 
 // ── Mapping to the card/detail DTO ───────────────────────────────────────────
 function toRoundEntries(l: Loaded): RoundEntry[] {
-  return l.rounds.map((rd) => {
-    const diffs = rd.blocks.map((b) => b.difficulty).filter((d): d is number => d != null);
-    return {
-      round: rd.name,
-      status: rd.status,
-      questions: rd.blocks.length,
-      avgDifficulty: diffs.length
-        ? Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length)
-        : undefined,
-      platform: rd.platform ?? undefined,
-    };
-  });
+  return l.rounds.map((rd) => ({
+    round: rd.name,
+    status: rd.status,
+    questions: rd.blocks.length,
+    platform: rd.platform ?? undefined,
+  }));
 }
 
 function toCard(l: Loaded): Experience {
@@ -165,7 +159,6 @@ function toCard(l: Loaded): Experience {
           round: single.name,
           outcome: l.exp.overallOutcome,
           questions: single.blocks.length,
-          avgDifficulty: toRoundEntries(l)[0].avgDifficulty,
           platform: single.platform ?? undefined,
         }
       : { rounds: toRoundEntries(l), overallOutcome: l.exp.overallOutcome }),
@@ -175,12 +168,12 @@ function toCard(l: Loaded): Experience {
 function toDetail(l: Loaded): Experience {
   const card = toCard(l);
   const allBlocks = l.rounds.flatMap((rd) =>
-    rd.blocks.map((b) => ({ b, platform: rd.platform })),
+    rd.blocks.map((b) => ({ b, platform: rd.platform, round: rd.name })),
   );
-  const questionsList: QuestionDetail[] = allBlocks.map(({ b, platform }, i) => ({
+  const questionsList: QuestionDetail[] = allBlocks.map(({ b, platform, round }, i) => ({
     n: i + 1,
+    round,
     topic: b.tags.length ? b.tags.join(" · ") : blockTypeLabel(b.blockType),
-    difficulty: b.difficulty ?? 0,
     platform: platform ?? "",
     time: "",
     summary: b.prompt,
@@ -235,6 +228,39 @@ export async function listCompanies(): Promise<CompanyListItem[]> {
       };
     })
     .sort((a, b) => b.count - a.count);
+}
+
+// Dynamic "Try" chips for the landing hero: the most-covered company, role, and
+// round across visible posts, so the suggestions reflect real top content
+// instead of hardcoded guesses. Cheap grouped counts; de-duped, capped at 4.
+export async function getSearchSuggestions(): Promise<string[]> {
+  const [cos, roles, rounds] = await Promise.all([
+    db
+      .select({ name: s.companies.name })
+      .from(s.experiences)
+      .innerJoin(s.companies, eq(s.companies.id, s.experiences.companyId))
+      .where(visibleExp)
+      .groupBy(s.companies.name)
+      .orderBy(desc(count()))
+      .limit(2),
+    db
+      .select({ role: s.experiences.roleTitle })
+      .from(s.experiences)
+      .where(visibleExp)
+      .groupBy(s.experiences.roleTitle)
+      .orderBy(desc(count()))
+      .limit(1),
+    db
+      .select({ name: s.rounds.name })
+      .from(s.rounds)
+      .innerJoin(s.experiences, eq(s.experiences.id, s.rounds.experienceId))
+      .where(visibleExp)
+      .groupBy(s.rounds.name)
+      .orderBy(desc(count()))
+      .limit(1),
+  ]);
+  const terms = [...cos.map((c) => c.name), ...roles.map((r) => r.role), ...rounds.map((r) => r.name)];
+  return [...new Set(terms.filter(Boolean))].slice(0, 4);
 }
 
 // Paginated /companies grid: ordered by visible-experience count desc (most
@@ -439,7 +465,7 @@ export async function searchRoleTypes(
 // The /feed and /search filtering/sorting used to run in the client over the
 // WHOLE corpus. Doing it server-side means a page load fetches one bounded page
 // and the sort spans the full dataset correctly.
-export type FeedSort = "latest" | "helpful" | "views" | "difficulty";
+export type FeedSort = "latest" | "helpful" | "views";
 export interface FeedQuery {
   round?: string; // "all" | round name | "Tech" (prefix match)
   outcome?: string; // "all" | overall_outcome enum value
@@ -483,9 +509,7 @@ export async function listFeedPage(opts: FeedQuery = {}): Promise<FeedPage> {
       ? sql`${s.experiences.helpfulCount} desc, ${tie}`
       : opts.sort === "views"
         ? sql`${s.experiences.viewCount} desc, ${tie}`
-        : opts.sort === "difficulty"
-          ? sql`(select avg(${s.contentBlocks.difficulty}) from ${s.contentBlocks} inner join ${s.rounds} on ${s.contentBlocks.roundId} = ${s.rounds.id} where ${s.rounds.experienceId} = ${s.experiences.id}) desc nulls last, ${tie}`
-          : sql`${s.experiences.publishedAt} desc nulls last, ${tie}`;
+        : sql`${s.experiences.publishedAt} desc nulls last, ${tie}`;
 
   const [[{ total }], rows] = await Promise.all([
     db.select({ total: count() }).from(s.experiences).where(where),
@@ -595,34 +619,124 @@ function statusOf(e: typeof s.experiences.$inferSelect): ReviewStatus {
   return "Rejected";
 }
 
-export async function getMyPosts(userId: string): Promise<MyPost[]> {
-  const mine = await loadWhere(
-    eq(s.experiences.authorId, userId),
-    desc(s.experiences.updatedAt),
+function toMyPost(l: Loaded): MyPost {
+  const status = statusOf(l.exp);
+  return {
+    id: l.exp.id,
+    company: companyNameOf(l),
+    role: l.exp.roleTitle,
+    overallOutcome: l.exp.overallOutcome,
+    status,
+    submittedAt: fmtDate(l.exp.createdAt),
+    updatedAt: fmtDate(l.exp.updatedAt),
+    deletedAt: l.exp.deletedAt ? fmtDate(l.exp.deletedAt) : undefined,
+    tips: l.tips.length,
+    views: l.exp.viewCount,
+    helpful: l.exp.helpfulCount,
+    opsNote:
+      (status === "Needs Edits" || status === "Rejected") && l.exp.reviewNotes
+        ? l.exp.reviewNotes
+        : undefined,
+    hiddenReason: l.exp.hiddenReason ?? undefined,
+    hiddenAt: l.exp.hiddenAt ? fmtDate(l.exp.hiddenAt) : undefined,
+    rounds: toRoundEntries(l),
+  };
+}
+
+// SQL mirror of statusOf - filters the author's rows to a single derived status.
+function statusWhere(status: ReviewStatus): SQL {
+  const live = and(isNull(s.experiences.deletedAt), isNull(s.experiences.hiddenAt));
+  switch (status) {
+    case "Deleted":
+      return isNotNull(s.experiences.deletedAt);
+    case "Hidden":
+      return and(isNull(s.experiences.deletedAt), isNotNull(s.experiences.hiddenAt))!;
+    case "Withdrawn":
+      return and(live, eq(s.experiences.reviewStatus, "under_review"), isNotNull(s.experiences.withdrawnAt))!;
+    case "Under Review":
+      return and(live, eq(s.experiences.reviewStatus, "under_review"), isNull(s.experiences.withdrawnAt))!;
+    case "Approved":
+      return and(live, eq(s.experiences.reviewStatus, "approved"))!;
+    case "Needs Edits":
+      return and(live, eq(s.experiences.reviewStatus, "needs_edits"))!;
+    case "Rejected":
+      return and(live, eq(s.experiences.reviewStatus, "rejected"))!;
+  }
+}
+
+// Free-text match over role + company (canonical name or the proposed name a
+// not-yet-resolved under-review post carries). companies is left-joined by
+// loadWhere/the count query, so s.companies.name is in scope here.
+function myPostsSearch(term: string): SQL | undefined {
+  const t = term.trim();
+  if (!t) return undefined;
+  const like = `%${t}%`;
+  return or(
+    ilike(s.experiences.roleTitle, like),
+    ilike(s.companies.name, like),
+    ilike(s.experiences.proposedCompanyName, like),
   );
-  return mine.map((l) => {
-    const status = statusOf(l.exp);
-    return {
-      id: l.exp.id,
-      company: companyNameOf(l),
-      role: l.exp.roleTitle,
-      overallOutcome: l.exp.overallOutcome,
-      status,
-      submittedAt: fmtDate(l.exp.createdAt),
-      updatedAt: fmtDate(l.exp.updatedAt),
-      deletedAt: l.exp.deletedAt ? fmtDate(l.exp.deletedAt) : undefined,
-      tips: l.tips.length,
-      views: l.exp.viewCount,
-      helpful: l.exp.helpfulCount,
-      opsNote:
-        (status === "Needs Edits" || status === "Rejected") && l.exp.reviewNotes
-          ? l.exp.reviewNotes
-          : undefined,
-      hiddenReason: l.exp.hiddenReason ?? undefined,
-      hiddenAt: l.exp.hiddenAt ? fmtDate(l.exp.hiddenAt) : undefined,
-      rounds: toRoundEntries(l),
-    };
-  });
+}
+
+export type MyPostStatusCounts = Partial<Record<ReviewStatus, number>> & { all: number };
+
+export interface MyPostsPage {
+  items: MyPost[];
+  total: number; // rows for the active status+search (drives hasMore + "x of y")
+  hasMore: boolean;
+  counts: MyPostStatusCounts; // per-status totals for the tab badges
+}
+
+// One GROUP BY over the author's rows, deriving status the same way statusOf
+// does, so the tab badges stay correct under any active search term.
+async function myPostCounts(where: SQL): Promise<MyPostStatusCounts> {
+  const statusExpr = sql<ReviewStatus>`case
+    when ${s.experiences.deletedAt} is not null then 'Deleted'
+    when ${s.experiences.hiddenAt} is not null then 'Hidden'
+    when ${s.experiences.reviewStatus} = 'under_review' and ${s.experiences.withdrawnAt} is not null then 'Withdrawn'
+    when ${s.experiences.reviewStatus} = 'under_review' then 'Under Review'
+    when ${s.experiences.reviewStatus} = 'approved' then 'Approved'
+    when ${s.experiences.reviewStatus} = 'needs_edits' then 'Needs Edits'
+    else 'Rejected' end`;
+  const rows = await db
+    .select({ status: statusExpr, n: count() })
+    .from(s.experiences)
+    .leftJoin(s.companies, eq(s.experiences.companyId, s.companies.id))
+    .where(where)
+    .groupBy(statusExpr);
+  const counts: MyPostStatusCounts = { all: 0 };
+  for (const r of rows) {
+    counts[r.status] = Number(r.n);
+    counts.all += Number(r.n);
+  }
+  return counts;
+}
+
+// Author's own rows, paginated + searchable + filterable by derived status.
+// Deliberately NOT visibleExp-gated: an author always sees every state of their
+// own posts. "all" orders non-deleted first (each newest-updated first), so the
+// Deleted rows sink to the bottom exactly as the client used to arrange them.
+export async function getMyPosts(
+  userId: string,
+  opts?: { status?: ReviewStatus | "all"; search?: string; page?: number; pageSize?: number },
+): Promise<MyPostsPage> {
+  const status = opts?.status ?? "all";
+  const { size, offset } = pageBounds(opts?.page, opts?.pageSize);
+
+  const where = and(eq(s.experiences.authorId, userId), myPostsSearch(opts?.search ?? ""))!;
+  const listWhere = status === "all" ? where : and(where, statusWhere(status))!;
+  const orderBy =
+    status === "all"
+      ? sql`(${s.experiences.deletedAt} is not null), ${s.experiences.updatedAt} desc`
+      : desc(s.experiences.updatedAt);
+
+  const [counts, mine] = await Promise.all([
+    myPostCounts(where),
+    loadWhere(listWhere, orderBy, size, offset),
+  ]);
+  const total = status === "all" ? counts.all : counts[status] ?? 0;
+  const items = mine.map(toMyPost);
+  return { items, total, hasMore: offset + items.length < total, counts };
 }
 
 // The author's newest live submission awaiting review - the /under-review page
@@ -889,7 +1003,6 @@ export async function getEditPrefill(
           type: b.blockType,
           prompt: b.prompt,
           topics: b.tags,
-          difficulty: b.difficulty,
           detail: b.detail ?? "",
         })),
       })),

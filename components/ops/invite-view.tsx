@@ -176,7 +176,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
           <CardHeader
             n={1}
             title="Add recipients"
-            sub="Drop a CSV of students you'd like to nudge - or add them one at a time below. One row per experience you want written up. Every row with a valid email gets an invite (no dedupe; duplicates and re-runs all send)."
+            sub="Drop a CSV or add students below, one row each. Every valid email gets an invite; duplicates and re-runs all send."
           />
           <DropZone
             onCsv={setCsv}
@@ -247,7 +247,7 @@ export function InviteView({ emailLive }: { emailLive: boolean }) {
                 <span className="size-[3px] rounded-full bg-fg-4" />
                 <span>
                   <b className="font-medium text-fg-2">Reply-to:</b>{" "}
-                  {viewer?.email ?? "you@sst.scaler.com"}
+                  {FROM_ADDRESS}
                 </span>
               </div>
             </div>
@@ -780,20 +780,22 @@ function EmailPreview({
         <div className="flex-1 whitespace-pre-wrap break-words px-4 pb-[18px] pt-2 text-[13px] leading-[1.65] text-fg-2">
           {applyMerge(body, recipient)
             .split("\n")
-            .map((line, i) =>
-              line.match(/→/) ? (
+            .map((line, i) => {
+              // A line that STARTS with an arrow (→, -> or =>) is the CTA button.
+              const cta = line.match(/^\s*(?:→|->|=>)\s+(.*)$/);
+              return cta ? (
                 <div
                   key={i}
                   className="my-2 inline-block rounded-md border border-blue-border bg-[linear-gradient(180deg,var(--color-blue-soft),transparent)] bg-surface-3 px-3.5 py-2 text-[12.5px] font-semibold text-blue shadow-[0_0_14px_-6px_var(--color-blue-glow)]"
                 >
-                  {line}
+                  {cta[1]} →
                 </div>
               ) : (
                 <div key={i} className={cn("min-h-[1em]", line.trim() === "" && "h-2")}>
                   {line || " "}
                 </div>
-              ),
-            )}
+              );
+            })}
         </div>
       </div>
     </div>

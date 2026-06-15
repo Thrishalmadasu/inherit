@@ -10,8 +10,6 @@ import { searchExperiences } from "@/app/actions/search";
 import { cn } from "@/lib/cn";
 import type { CompanyListItem, Experience } from "@/lib/types";
 
-const RECENT_TERMS = ["Amazon", "SDE Intern", "Behavioural", "OA"];
-
 function highlight(text: string, q: string): ReactNode {
   if (!q || !text) return text;
   const parts = String(text).split(
@@ -31,9 +29,11 @@ function highlight(text: string, q: string): ReactNode {
 export function SearchView({
   initialQ,
   companies,
+  suggestions,
 }: {
   initialQ: string;
   companies: CompanyListItem[];
+  suggestions: string[];
 }) {
   const [q, setQ] = useState(initialQ);
   const [tab, setTab] = useState<"all" | "companies" | "experiences">("all");
@@ -144,18 +144,20 @@ export function SearchView({
             </strong>
             Find a company, a role, or a specific interview round - results appear
             from keystroke 1.
-            <div className="mt-3.5 flex flex-wrap justify-center gap-2">
-              <span className="mr-1 text-xs text-fg-3">Recent</span>
-              {RECENT_TERMS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setQ(t)}
-                  className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-fg-2 hover:border-border-hover hover:text-fg"
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+            {suggestions.length > 0 && (
+              <div className="mt-3.5 flex flex-wrap justify-center gap-2">
+                <span className="mr-1 text-xs text-fg-3">Try</span>
+                {suggestions.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setQ(t)}
+                    className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-fg-2 hover:border-border-hover hover:text-fg"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : totals.all === 0 ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-[60px] text-center text-fg-3">

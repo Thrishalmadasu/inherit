@@ -16,8 +16,11 @@ function latest(days: number) {
   return `${Math.round(days / 30)}mo ago`;
 }
 
-// Server-paginated (10/page), ordered by experience count desc. Search + page
-// live in the URL (?q & ?page) so the server re-queries — no whole-list load.
+// Server-paginated (12/page = 3×4 grid), ordered by experience count desc.
+// Search + page live in the URL (?q & ?page) so the server re-queries — no
+// whole-list load. Keep in sync with the pageSize in app/companies/page.tsx.
+const PAGE_SIZE = 12;
+
 export function CompaniesView({
   data,
   q,
@@ -38,8 +41,8 @@ export function CompaniesView({
     router.push(`/companies${params.toString() ? `?${params}` : ""}`);
   };
 
-  const from = data.total === 0 ? 0 : (page - 1) * 10 + 1;
-  const to = (page - 1) * 10 + data.items.length;
+  const from = data.total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = (page - 1) * PAGE_SIZE + data.items.length;
 
   return (
     <>

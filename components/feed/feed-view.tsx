@@ -131,7 +131,6 @@ export function FeedView({ initial }: { initial: FeedPage }) {
               <option value="latest">Latest first</option>
               <option value="helpful">Most helpful</option>
               <option value="views">Most viewed</option>
-              <option value="difficulty">Hardest first</option>
             </Select>
           </div>
         </div>

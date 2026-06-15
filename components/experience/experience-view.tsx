@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { OutcomePill, RoundPill, Pill } from "@/components/ui/pill";
-import { Difficulty } from "@/components/ui/primitives";
 import { QuestionCard, PrepTip, Section } from "@/components/experience/blocks";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/cn";
+// difficulty intentionally dropped — too subjective / discouraging for students
 import { toast } from "@/lib/toast";
 import { recordView, setHelpful, setSaved } from "@/app/actions/engagement";
 import { hideExperience } from "@/app/actions/moderation";
-import type { Experience } from "@/lib/types";
+import type { Experience, QuestionDetail } from "@/lib/types";
 
 export function ExperienceView({
   exp,
@@ -77,6 +77,17 @@ export function ExperienceView({
     }
   };
 
+  // The full round pipeline (multi-round) or the single round, for the header.
+  const roundNames = exp.rounds?.map((r) => r.round) ?? (exp.round ? [exp.round] : []);
+  // Regroup the flat question list back into its rounds so the detail page
+  // shows every round, not just the first.
+  const questionGroups: { round?: string; questions: QuestionDetail[] }[] = [];
+  for (const q of exp.questionsList ?? []) {
+    const last = questionGroups[questionGroups.length - 1];
+    if (last && last.round === q.round) last.questions.push(q);
+    else questionGroups.push({ round: q.round, questions: [q] });
+  }
+
   return (
     <>
       <TopNav />
@@ -92,15 +103,20 @@ export function ExperienceView({
               {company.name}
             </Link>
             <Icon.chev className="size-3 opacity-60" />
-            <span className="text-fg">
-              {exp.role} · {exp.round}
-            </span>
+            <span className="text-fg">{exp.role}</span>
           </div>
 
           {/* Header */}
           <header className="mb-6 border-b border-border pb-6">
             <div className="mb-3.5 flex flex-wrap items-center gap-2">
-              {exp.round && <RoundPill round={exp.round} />}
+              {roundNames.map((rn, i) => (
+                <Fragment key={i}>
+                  <RoundPill round={rn} />
+                  {i < roundNames.length - 1 && (
+                    <Icon.arrow className="size-3 shrink-0 text-fg-4" />
+                  )}
+                </Fragment>
+              ))}
               {exp.outcome && <OutcomePill outcome={exp.outcome} />}
               <Pill>
                 <Icon.calendar className="size-[11px]" /> {exp.year}
@@ -113,7 +129,7 @@ export function ExperienceView({
               )}
             </div>
             <h1 className="mb-1.5 text-[28px] font-bold leading-[1.25] tracking-[-0.025em]">
-              {exp.role} · {exp.round} at {company.name}
+              {exp.role} at {company.name}
             </h1>
             <div className="flex flex-wrap items-center gap-2.5 text-sm text-fg-2">
               <Link href={`/companies/${company.slug}`} className="hover:text-fg">
@@ -151,40 +167,65 @@ export function ExperienceView({
             </div>
           </header>
 
-          {/* Overview */}
-          <Section title="Overview">
-            <p className="m-0 text-[14.5px] leading-[1.65] text-fg-2">{exp.overview}</p>
-          </Section>
+          {/* Overview — omitted when the experience has none (e.g. imports) */}
+          {exp.overview?.trim() && (
+            <Section title="Overview">
+              <p className="m-0 text-[14.5px] leading-[1.65] text-fg-2">{exp.overview}</p>
+            </Section>
+          )}
 
-          {/* Questions */}
+          {/* Questions — grouped by round so multi-round pipelines are clear */}
           <Section title="Questions" count={`${exp.questionsList?.length ?? 0} total`}>
-            {exp.questionsList?.map((q) => <QuestionCard key={q.n} q={q} />)}
+            {questionGroups.map((g, gi) => (
+              <div key={gi} className="mb-6 last:mb-0">
+                {questionGroups.length > 1 && g.round && (
+                  <div className="mb-3 flex items-center gap-2.5">
+                    <span className="grid size-6 place-items-center rounded-full border border-blue-border bg-blue-soft text-[11px] font-bold tabular-nums text-blue">
+                      {gi + 1}
+                    </span>
+                    <h3 className="m-0 text-[15px] font-semibold tracking-[-0.01em] text-fg">
+                      {g.round}
+                    </h3>
+                    <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium tabular-nums text-fg-3">
+                      {g.questions.length} {g.questions.length === 1 ? "question" : "questions"}
+                    </span>
+                  </div>
+                )}
+                <div className="grid gap-2.5">
+                  {g.questions.map((q) => <QuestionCard key={q.n} q={q} />)}
+                </div>
+              </div>
+            ))}
           </Section>
 
-          {/* Prep tips */}
-          <Section title="Prep tips" count={String(exp.prepTips?.length ?? 0)}>
-            <div className="grid gap-2.5">
-              {exp.prepTips?.map((t, i) => <PrepTip key={i} tip={t} />)}
-            </div>
-          </Section>
+          {/* Prep tips — omitted when there are none */}
+          {(exp.prepTips?.length ?? 0) > 0 && (
+            <Section title="Prep tips" count={String(exp.prepTips!.length)}>
+              <div className="grid gap-2.5">
+                {exp.prepTips!.map((t, i) => <PrepTip key={i} tip={t} />)}
+              </div>
+            </Section>
+          )}
 
-          {/* Reflections */}
-          <Section title="Reflections">
-            <div className="relative rounded-lg border border-border bg-[linear-gradient(180deg,rgba(46,160,248,0.04),transparent_80%),var(--color-surface)] py-[22px] pl-7 pr-[22px]">
-              <span className="absolute bottom-[18px] left-0 top-[18px] w-[3px] rounded-r-[3px] bg-gradient-to-b from-blue to-blue-deep shadow-[0_0_12px_var(--color-blue-glow)]" />
-              <span className="pointer-events-none absolute right-[18px] top-3.5 select-none font-serif text-[48px] leading-none text-blue opacity-[0.18]">
-                &ldquo;
-              </span>
-              {exp.reflection?.split("\n\n").map((para, i) => (
-                <p
-                  key={i}
-                  className="mb-3 text-[15px] leading-[1.7] tracking-[0.005em] text-fg last:mb-0"
-                >
-                  {para}
-                </p>
-              ))}
-            </div>
-          </Section>
+          {/* Reflections — omitted when the author wrote none */}
+          {exp.reflection?.trim() && (
+            <Section title="Reflections">
+              <div className="relative rounded-lg border border-border bg-[linear-gradient(180deg,rgba(46,160,248,0.04),transparent_80%),var(--color-surface)] py-[22px] pl-7 pr-[22px]">
+                <span className="absolute bottom-[18px] left-0 top-[18px] w-[3px] rounded-r-[3px] bg-gradient-to-b from-blue to-blue-deep shadow-[0_0_12px_var(--color-blue-glow)]" />
+                <span className="pointer-events-none absolute right-[18px] top-3.5 select-none font-serif text-[48px] leading-none text-blue opacity-[0.18]">
+                  &ldquo;
+                </span>
+                {exp.reflection.split("\n\n").map((para, i) => (
+                  <p
+                    key={i}
+                    className="mb-3 text-[15px] leading-[1.7] tracking-[0.005em] text-fg last:mb-0"
+                  >
+                    {para}
+                  </p>
+                ))}
+              </div>
+            </Section>
+          )}
 
           {/* Helpful (V1: Helpful-only) */}
           <Section title="Was this helpful?" count={`${helpfulCount} found it helpful`}>
@@ -222,10 +263,6 @@ export function ExperienceView({
               <KV k="Platform" v={exp.platform ?? "-"} />
               <KV k="Duration" v={exp.duration ?? "-"} />
               <KV k="Year" v={String(exp.year)} />
-              <span className="text-fg-3">Difficulty</span>
-              <span className="text-right">
-                <Difficulty value={exp.avgDifficulty ?? 0} />
-              </span>
             </div>
             <div className="mt-3.5">
               <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">

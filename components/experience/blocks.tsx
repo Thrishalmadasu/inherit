@@ -1,7 +1,6 @@
 // Shared post-content blocks - used by the experience detail page and the
 // author's under-review preview (and later, the Ops queue full-post view).
 import { Icon } from "@/components/icons";
-import { Difficulty } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import type { PrepTip as PrepTipType, QuestionDetail } from "@/lib/types";
 
@@ -16,7 +15,6 @@ export function QuestionCard({ q }: { q: QuestionDetail }) {
           {q.topic}
         </span>
         <span className="ml-auto flex items-center gap-2.5 text-xs text-fg-3">
-          {q.difficulty > 0 && <Difficulty value={q.difficulty} />}
           {q.time && (
             <>
               <span className="size-[3px] rounded-full bg-fg-4" />

@@ -4,7 +4,6 @@
 
 export interface DraftQuestion {
   topics: string[];
-  difficulty: number;
   text: string;
 }
 
@@ -14,7 +13,6 @@ export interface DraftBlock {
   type: DraftBlockType;
   prompt: string;
   topics: string[];
-  difficulty: number | null; // hidden for behavioral
   detail: string;
 }
 

@@ -12,6 +12,7 @@ import {
   addRoundTypeCore,
   addTopicCore,
   mergeCompaniesCore,
+  mergeRoundTypesCore,
   renameCompanyCore,
   renameRoleTypeCore,
   renameRoundTypeCore,
@@ -78,6 +79,14 @@ export async function renameRoundType(id: string, label: string): Promise<Action
 export async function setRoundTypeActive(id: string, isActive: boolean): Promise<ActionResult> {
   const actor = await requireModerator();
   return runAction(() => setRoundTypeActiveCore(actor, id, isActive));
+}
+
+export async function mergeRoundTypes(
+  sourceId: string,
+  targetId: string,
+): Promise<ActionDataResult<{ target: string; moved: number }>> {
+  const actor = await requireModerator();
+  return runActionData(() => mergeRoundTypesCore(actor, sourceId, targetId));
 }
 
 // ── Role types ──

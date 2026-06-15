@@ -200,7 +200,6 @@ export const contentBlocks = pgTable("content_blocks", {
   position: integer("position").notNull(),
   blockType: blockType("block_type").notNull(),
   prompt: text("prompt").notNull(),
-  difficulty: integer("difficulty"), // 1–5; NULL for behavioral/open
   detail: text("detail"),
 });
 

@@ -10,7 +10,6 @@ import { Funnel } from "@/components/ui/funnel";
 import { TopicsList } from "@/components/ui/topics-list";
 import { Select } from "@/components/ui/select";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { avgDifficultyOf } from "@/lib/types";
 import type { CompanyPageData } from "@/lib/db/queries";
 
 export function CompanyView({ company }: { company: CompanyPageData }) {
@@ -39,9 +38,7 @@ export function CompanyView({ company }: { company: CompanyPageData }) {
         const rs = e.rounds ? e.rounds.map((r) => r.round) : [e.round];
         return rs.includes(roundFilter);
       });
-    if (sort === "difficulty")
-      list = list.sort((a, b) => avgDifficultyOf(b) - avgDifficultyOf(a));
-    else if (sort === "helpful")
+    if (sort === "helpful")
       list = list.sort((a, b) => (b.helpful || 0) - (a.helpful || 0));
     else if (sort === "views")
       list = list.sort((a, b) => (b.views || 0) - (a.views || 0));
@@ -222,7 +219,6 @@ export function CompanyView({ company }: { company: CompanyPageData }) {
               <option value="recent">Most recent</option>
               <option value="helpful">Most helpful</option>
               <option value="views">Most viewed</option>
-              <option value="difficulty">Hardest first</option>
             </Select>
           </div>
         </div>

@@ -39,15 +39,13 @@ export const OUTCOMES = ["Offer", "Shortlisted", "Awaiting", "Rejected", "Withdr
 // in-app (mirror topics); students only ever SELECT from the DB list.
 export const ROUND_TYPE_SEED = [
   "OA",
-  "Aptitude",
-  "Group Discussion",
+  "Technical Interview",
   "Tech 1",
   "Tech 2",
   "System Design",
-  "Hiring Manager",
-  "Behavioral",
-  "Bar Raiser",
   "HR",
+  "Hiring Manager",
+  "Behavioural",
 ] as const;
 
 export const ROUND_STATUSES = ["Passed", "Failed", "Awaiting"] as const;
@@ -126,7 +124,7 @@ export const BLOCK_TAG_SUGGESTIONS: Record<DraftBlockType, string[]> = {
 
 export const BLOCK_TYPE_META: Record<
   DraftBlockType,
-  { label: string; promptLabel: string; promptPlaceholder: string; detailLabel: string | null; detailPlaceholder: string; hasDifficulty: boolean }
+  { label: string; promptLabel: string; promptPlaceholder: string; detailLabel: string | null; detailPlaceholder: string }
 > = {
   coding: {
     label: "Coding / DSA",
@@ -135,7 +133,6 @@ export const BLOCK_TYPE_META: Record<
       "e.g. Count distinct sub-arrays of length K with sum greater than T…",
     detailLabel: "Your approach (optional)",
     detailPlaceholder: "How you solved it, what TLE'd, the trick that worked…",
-    hasDifficulty: true,
   },
   system_design: {
     label: "System design",
@@ -143,7 +140,6 @@ export const BLOCK_TYPE_META: Record<
     promptPlaceholder: "e.g. Design a rate limiter for a public API…",
     detailLabel: "Considerations / notes (optional)",
     detailPlaceholder: "What they probed on - trade-offs, scale numbers, follow-ups…",
-    hasDifficulty: true,
   },
   behavioral: {
     label: "Behavioral / HR",
@@ -151,7 +147,6 @@ export const BLOCK_TYPE_META: Record<
     promptPlaceholder: "e.g. Tell me about a time you disagreed with a teammate…",
     detailLabel: "What they looked for / your approach (optional)",
     detailPlaceholder: "STAR structure, the competency being probed, follow-up depth…",
-    hasDifficulty: false,
   },
   open: {
     label: "Open",
@@ -159,7 +154,6 @@ export const BLOCK_TYPE_META: Record<
     promptPlaceholder: "Anything that doesn't fit the other buckets…",
     detailLabel: "Notes (optional)",
     detailPlaceholder: "Extra context…",
-    hasDifficulty: false,
   },
 };
 
@@ -168,7 +162,6 @@ export function emptyBlock(type: DraftBlockType): DraftBlock {
     type,
     prompt: "",
     topics: [],
-    difficulty: BLOCK_TYPE_META[type].hasDifficulty ? 3 : null,
     detail: "",
   };
 }

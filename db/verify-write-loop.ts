@@ -112,7 +112,6 @@ const form = (company: string, over: Partial<ShareDraftForm> = {}): ShareDraftFo
           type: "coding",
           prompt: "Verify-script question: sliding window over prefix sums.",
           topics: ["Sliding Window", "Arrays & Strings"],
-          difficulty: 3,
           detail: "Two pointers after prefix sums.",
         },
       ],
@@ -168,7 +167,7 @@ async function main() {
   await approveCore(moderator, id1);
   vis = await visibleEverywhere(id1, "amazon");
   ok(vis.feed && vis.direct && vis.companyPage, "approved post visible everywhere");
-  let mine = await getMyPosts(student1.id);
+  let mine = (await getMyPosts(student1.id)).items;
   ok(mine.find((p) => p.id === id1)?.status === "Approved", "author sees Approved");
   ok(
     (await db.select().from(s.notifications).where(eq(s.notifications.experienceId, id1))).some(
@@ -186,7 +185,7 @@ async function main() {
 
   console.log("\n- Flow E: suggest edits → needs_edits with note -");
   await suggestEditsCore(moderator, id2, "Please remove the interviewer's name.");
-  mine = await getMyPosts(student2.id);
+  mine = (await getMyPosts(student2.id)).items;
   const p2 = mine.find((p) => p.id === id2);
   ok(p2?.status === "Needs Edits" && p2.opsNote?.includes("interviewer"), "author sees Needs Edits + note");
   ok(((await getOpsQueue()).items).length === 0, "needs_edits post left the queue");
@@ -199,7 +198,7 @@ async function main() {
   queue = (await getOpsQueue()).items;
   ok(queue.length === 2 && queue[0].id === id3 && queue[1].id === id2, "resubmission is BEHIND the newer submission (back of FIFO)");
   ok(queue[1].role === "SDE-1", "resubmitted content replaced");
-  mine = await getMyPosts(student2.id);
+  mine = (await getMyPosts(student2.id)).items;
   ok(mine.find((p) => p.id === id2)?.status === "Under Review", "status reset to Under Review");
 
   console.log("\n- §10: editing an APPROVED post pulls the live version -");
@@ -214,7 +213,7 @@ async function main() {
 
   console.log("\n- Flow E: reject with reason -");
   await rejectCore(moderator, id3, "Duplicate of an existing post.");
-  mine = await getMyPosts(student1.id);
+  mine = (await getMyPosts(student1.id)).items;
   const p3 = mine.find((p) => p.id === id3);
   ok(p3?.status === "Rejected" && p3.opsNote?.includes("Duplicate"), "author sees Rejected + reason");
   err = "";
@@ -236,7 +235,7 @@ async function main() {
   await hideCore(moderator, id1, "Round count disputed by two later interviewees.");
   vis = await visibleEverywhere(id1, "amazon");
   ok(!vis.feed && !vis.direct && !vis.companyPage, "hidden post vanished from every read surface");
-  mine = await getMyPosts(student1.id);
+  mine = (await getMyPosts(student1.id)).items;
   const h1 = mine.find((p) => p.id === id1);
   ok(h1?.status === "Hidden" && h1.hiddenReason?.includes("disputed"), "author sees Hidden + reason");
   const modLog = await db.select().from(s.moderationActions).where(eq(s.moderationActions.experienceId, id1));
@@ -259,7 +258,7 @@ async function main() {
   console.log("\n- author soft-delete / restore -");
   await deleteMyPostCore(student1, id1);
   ok(!(await visibleEverywhere(id1, "amazon")).feed, "author-deleted post vanished from read surfaces");
-  mine = await getMyPosts(student1.id);
+  mine = (await getMyPosts(student1.id)).items;
   ok(mine.find((p) => p.id === id1)?.status === "Deleted", "author sees Deleted");
   await restoreMyPostCore(student1, id1);
   ok((await visibleEverywhere(id1, "amazon")).feed, "restore brings it back (still approved)");
@@ -269,7 +268,7 @@ async function main() {
   await withdrawMyPostCore(student2, id4);
   ok(!((await getOpsQueue()).items).some((q) => q.id === id4), "withdrawn post left the queue");
   ok((await getMyPendingPost(student2.id))?.id !== id4, "withdrawn post is not 'pending' for the author");
-  ok((await getMyPosts(student2.id)).find((p) => p.id === id4)?.status === "Withdrawn", "author sees Withdrawn");
+  ok(((await getMyPosts(student2.id)).items).find((p) => p.id === id4)?.status === "Withdrawn", "author sees Withdrawn");
   await resubmitWithdrawnCore(student2, id4);
   queue = (await getOpsQueue()).items;
   ok(queue[queue.length - 1].id === id4, "resubmitted withdrawal joins the back of the queue");
@@ -286,7 +285,7 @@ async function main() {
   try {
     await submitExperienceCore(student1, {
       ...form("Amazon"),
-      rounds: [{ ...form("Amazon").rounds[0], blocks: [{ type: "coding", prompt: "x", topics: ["Made Up Tag"], difficulty: 3, detail: "" }] }],
+      rounds: [{ ...form("Amazon").rounds[0], blocks: [{ type: "coding", prompt: "x", topics: ["Made Up Tag"], detail: "" }] }],
     } as ShareDraftForm);
   } catch (e) {
     err = e instanceof Error ? e.message : "";
@@ -502,7 +501,6 @@ async function main() {
             type: "coding",
             prompt: "Sheet-test: max subarray after k swaps.",
             topics: ["Sliding Window", "Arrays & Strings"],
-            difficulty: 3,
             detail: "",
           },
         ],
@@ -518,7 +516,6 @@ async function main() {
             type: "behavioral",
             prompt: "Tell me about a conflict you resolved.",
             topics: ["Conflict Resolution", "Teamwork"],
-            difficulty: null,
             detail: "Looked for ownership of the resolution.",
           },
         ],
@@ -570,8 +567,8 @@ async function main() {
     "technical row: DSA split from tags, platform lands in tools",
   );
   ok(
-    t.difficulty === 3 && t.link === `https://example.test/experiences/${sheetExpId}`,
-    "technical row: difficulty + absolute link",
+    t.link === `https://example.test/experiences/${sheetExpId}`,
+    "technical row: absolute link",
   );
   const b = rows.behavioral[0];
   ok(

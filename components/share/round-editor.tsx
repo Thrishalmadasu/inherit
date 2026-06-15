@@ -278,33 +278,6 @@ function BlockEditor({
         />
       </div>
 
-      {meta.hasDifficulty && (
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className={LABEL}>Difficulty</span>
-          <div className="inline-flex overflow-hidden rounded-md border border-border bg-bg-2">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => set({ difficulty: n })}
-                className={cn(
-                  "h-8 w-9 text-xs font-semibold tabular-nums transition-[background,color]",
-                  n < 5 && "border-r border-border",
-                  block.difficulty === n
-                    ? n >= 4
-                      ? "bg-red-soft text-red"
-                      : "bg-amber-soft text-amber"
-                    : "text-fg-3 hover:bg-surface hover:text-fg",
-                )}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          <span className="text-[11.5px] text-fg-3">1 = easy · 5 = brutal</span>
-        </div>
-      )}
-
       {meta.detailLabel && (
         <label className="flex flex-col gap-1.5">
           <span className={LABEL}>{meta.detailLabel}</span>

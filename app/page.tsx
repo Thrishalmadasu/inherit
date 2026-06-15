@@ -5,17 +5,15 @@ import { Icon } from "@/components/icons";
 import { OutcomePill } from "@/components/ui/pill";
 import { Author } from "@/components/ui/primitives";
 import { requireDbUser } from "@/lib/auth";
-import { getMyPendingPost, latestExperiences, listCompanies } from "@/lib/db/queries";
+import {
+  getMyPendingPost,
+  getSearchSuggestions,
+  latestExperiences,
+  listCompanies,
+} from "@/lib/db/queries";
 import type { CompanyListItem, Experience } from "@/lib/types";
 
 export const dynamic = "force-dynamic"; // always reflect the latest DB rows
-
-const QUICK = [
-  { q: "Amazon", label: "Amazon" },
-  { q: "Microsoft", label: "Microsoft" },
-  { q: "SDE Intern", label: "SDE Intern" },
-  { q: "Behavioral", label: "Behavioural" },
-];
 
 function timeAgo(days: number) {
   if (days === 0) return "today";
@@ -26,10 +24,11 @@ function timeAgo(days: number) {
 
 export default async function DashboardPage() {
   const user = await requireDbUser();
-  const [companies, experiences, pending] = await Promise.all([
+  const [companies, experiences, pending, suggestions] = await Promise.all([
     listCompanies(),
     latestExperiences(6),
     getMyPendingPost(user.id),
+    getSearchSuggestions(),
   ]);
 
   return (
@@ -49,18 +48,20 @@ export default async function DashboardPage() {
             searchable in one place.
           </p>
           <HeroSearch companies={companies} experiences={experiences} />
-          <div className="mt-[18px] flex flex-wrap items-center justify-center gap-2">
-            <span className="text-xs text-fg-3">Try</span>
-            {QUICK.map((c) => (
-              <Link
-                key={c.q}
-                href={`/search?q=${encodeURIComponent(c.q)}`}
-                className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-fg-2 transition-[border-color,color] hover:border-border-hover hover:text-fg"
-              >
-                {c.label}
-              </Link>
-            ))}
-          </div>
+          {suggestions.length > 0 && (
+            <div className="mt-[18px] flex flex-wrap items-center justify-center gap-2">
+              <span className="text-xs text-fg-3">Try</span>
+              {suggestions.map((term) => (
+                <Link
+                  key={term}
+                  href={`/search?q=${encodeURIComponent(term)}`}
+                  className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-fg-2 transition-[border-color,color] hover:border-border-hover hover:text-fg"
+                >
+                  {term}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Your posts strip - only when the signed-in user has a pending post */}

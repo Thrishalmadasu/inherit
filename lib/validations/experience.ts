@@ -15,7 +15,6 @@ const blockSchema = z.object({
   type: z.enum(["coding", "system_design", "behavioral", "open"]),
   prompt: z.string().trim().min(1, "Every block needs its question/prompt").max(2000),
   topics: z.array(z.string().trim().min(1).max(60)).max(8),
-  difficulty: z.number().int().min(1).max(5).nullable(),
   detail: z.string().trim().max(2000),
 });
 

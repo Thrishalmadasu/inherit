@@ -38,7 +38,6 @@ type BlockSeed = {
   type: "coding" | "system_design" | "behavioral" | "open";
   prompt: string;
   tags: string[];
-  difficulty?: number;
   detail?: string;
 };
 type RoundSeed = {
@@ -87,8 +86,8 @@ const EXPERIENCES: ExpSeed[] = [
         platform: "HackerRank",
         notes: "110 min - two coding + aptitude",
         blocks: [
-          { type: "coding", prompt: "Sub-array sums over a threshold with a fixed window.", tags: ["Arrays & Strings", "Sliding Window"], difficulty: 3 },
-          { type: "coding", prompt: "Frequency-map pairing question on transaction logs.", tags: ["Hash Maps"], difficulty: 3 },
+          { type: "coding", prompt: "Sub-array sums over a threshold with a fixed window.", tags: ["Arrays & Strings", "Sliding Window"] },
+          { type: "coding", prompt: "Frequency-map pairing question on transaction logs.", tags: ["Hash Maps"] },
           { type: "open", prompt: "Quant aptitude - ratios, probability, time-and-work.", tags: ["Aptitude"] },
         ],
       },
@@ -97,7 +96,7 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Passed",
         platform: "Amazon Chime",
         blocks: [
-          { type: "coding", prompt: "Lowest common ancestor variant with parent pointers.", tags: ["Trees"], difficulty: 4 },
+          { type: "coding", prompt: "Lowest common ancestor variant with parent pointers.", tags: ["Trees"] },
           { type: "behavioral", prompt: "Tell me about a time you took ownership beyond your role.", tags: ["Leadership Principles", "Ownership"], detail: "Two follow-ups deep; STAR format expected." },
         ],
       },
@@ -106,8 +105,8 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Passed",
         platform: "Amazon Chime",
         blocks: [
-          { type: "coding", prompt: "Shortest path with blocked cells and one allowed wall-break.", tags: ["Graphs (BFS/DFS)"], difficulty: 4 },
-          { type: "coding", prompt: "Design a parking-lot class hierarchy, then extend for EV charging.", tags: ["OOP Design"], difficulty: 4 },
+          { type: "coding", prompt: "Shortest path with blocked cells and one allowed wall-break.", tags: ["Graphs (BFS/DFS)"] },
+          { type: "coding", prompt: "Design a parking-lot class hierarchy, then extend for EV charging.", tags: ["OOP Design"] },
         ],
       },
       {
@@ -157,7 +156,6 @@ const EXPERIENCES: ExpSeed[] = [
             prompt:
               "Given an array of N integers and a window size K, return the count of distinct sub-arrays of length K whose sum is strictly greater than a given threshold T. Constraints: N ≤ 2·10⁵, values up to 10⁹.",
             tags: ["Arrays & Strings", "Sliding Window"],
-            difficulty: 3,
             detail:
               "Classic prefix-sum + hashing on the window-tuple. Brute-force is O(N·K) and TLE'd on 3 cases for me - moving to a rolling hash plus a HashSet to dedupe the windows by content cleared it.",
           },
@@ -166,7 +164,6 @@ const EXPERIENCES: ExpSeed[] = [
             prompt:
               "M×N grid with cells marked 0/1/2. Starting from every '2' cell simultaneously, find the minimum time for all '1' cells to become '2' (with standard 4-directional spread). Return -1 if impossible.",
             tags: ["Graphs (BFS/DFS)"],
-            difficulty: 4,
             detail:
               "Multi-source BFS. Seed the queue with every '2' cell up front and track total steps. The trap is forgetting to verify all '1' cells were actually reached before returning - easy to off-by-one if you increment time at the wrong point.",
           },
@@ -216,8 +213,8 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Passed",
         platform: "Amazon Chime",
         blocks: [
-          { type: "coding", prompt: "Serialize/deserialize a binary tree with parent links.", tags: ["Trees"], difficulty: 4 },
-          { type: "coding", prompt: "Parking lot OOP design, scaled down to 20 minutes.", tags: ["OOP Design"], difficulty: 4 },
+          { type: "coding", prompt: "Serialize/deserialize a binary tree with parent links.", tags: ["Trees"] },
+          { type: "coding", prompt: "Parking lot OOP design, scaled down to 20 minutes.", tags: ["OOP Design"] },
           { type: "behavioral", prompt: "LP questions tied to my resume projects.", tags: ["Leadership Principles"] },
         ],
       },
@@ -241,8 +238,8 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Failed",
         platform: "HackerRank",
         blocks: [
-          { type: "coding", prompt: "Interval DP - maximum score from merging adjacent intervals.", tags: ["Dynamic Programming"], difficulty: 4 },
-          { type: "coding", prompt: "String matching with at most one wildcard substitution.", tags: ["Arrays & Strings"], difficulty: 4 },
+          { type: "coding", prompt: "Interval DP - maximum score from merging adjacent intervals.", tags: ["Dynamic Programming"] },
+          { type: "coding", prompt: "String matching with at most one wildcard substitution.", tags: ["Arrays & Strings"] },
         ],
       },
     ],
@@ -290,7 +287,7 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Awaiting",
         platform: "Amazon Chime",
         blocks: [
-          { type: "coding", prompt: "Weighted shortest path with optimisation follow-ups; BFS vs Dijkstra trade-offs at scale.", tags: ["Graphs (BFS/DFS)"], difficulty: 5 },
+          { type: "coding", prompt: "Weighted shortest path with optimisation follow-ups; BFS vs Dijkstra trade-offs at scale.", tags: ["Graphs (BFS/DFS)"] },
         ],
       },
     ],
@@ -314,8 +311,8 @@ const EXPERIENCES: ExpSeed[] = [
         status: "Passed",
         platform: "HackerRank",
         blocks: [
-          { type: "coding", prompt: "K most frequent elements under a streaming constraint.", tags: ["Heap"], difficulty: 3 },
-          { type: "coding", prompt: "Hard DP on subsequences with a parity constraint.", tags: ["Dynamic Programming"], difficulty: 4 },
+          { type: "coding", prompt: "K most frequent elements under a streaming constraint.", tags: ["Heap"] },
+          { type: "coding", prompt: "Hard DP on subsequences with a parity constraint.", tags: ["Dynamic Programming"] },
         ],
       },
     ],
@@ -433,7 +430,6 @@ async function main() {
             position: bi,
             blockType: b.type,
             prompt: b.prompt,
-            difficulty: b.difficulty ?? null,
             detail: b.detail,
           })
           .returning();

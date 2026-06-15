@@ -4,7 +4,7 @@
 // author actions (restore / delete / resubmit), and the Saved tab (bookmarked
 // posts by others). Everything arrives as props from the server page - never
 // queried here.
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { TopNav } from "@/components/top-nav";
 import { Icon } from "@/components/icons";
@@ -20,9 +20,9 @@ import {
   type ShareDraft,
 } from "@/lib/draft";
 import { deleteMyPost, restoreMyPost, resubmitWithdrawn } from "@/app/actions/my-posts";
-import { fetchSavedPage } from "@/app/actions/me";
+import { fetchMyPosts, fetchSavedPage } from "@/app/actions/me";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import type { Paginated } from "@/lib/db/queries";
+import type { MyPostsPage, Paginated } from "@/lib/db/queries";
 import type { ActionResult } from "@/lib/write/run";
 import type { Experience, MyPost, ReviewStatus } from "@/lib/types";
 
@@ -55,7 +55,7 @@ export function MyPostsView({
   posts,
   saved,
 }: {
-  posts: MyPost[];
+  posts: MyPostsPage;
   saved: Paginated<Experience>;
 }) {
   const [tab, setTab] = useState<TabId>("all");
@@ -65,8 +65,67 @@ export function MyPostsView({
     return draftTouched(d) ? d : null;
   });
 
-  // Saved is the only growing list here (My Posts is one author's own rows -
-  // naturally bounded). Page 1 from props; "Load more" accumulates the rest.
+  // The My Posts list is now server-paginated + searchable (an author can rack
+  // up dozens of posts). Page 1 + the tab counts arrive from props; tab/search
+  // changes re-query page 1, "Load more" appends the next page.
+  const [q, setQ] = useState("");
+  const term = q.trim();
+  const [items, setItems] = useState<MyPost[]>(posts.items);
+  const [total, setTotal] = useState(posts.total);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(posts.hasMore);
+  const [counts, setCounts] = useState(posts.counts);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refetching, startRefetch] = useTransition();
+  const reqId = useRef(0);
+  const didMount = useRef(false);
+
+  // Draft and Saved tabs don't hit the posts query (Draft is a local autosave,
+  // Saved is its own paginated read below).
+  const statusParam: ReviewStatus | "all" | null =
+    tab === "all" ? "all" : tab === "Draft" || tab === "Saved" ? null : (tab as ReviewStatus);
+
+  // Re-query page 1 whenever the tab or search term changes (skip the first
+  // render - the server already provided page 1 of "all").
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    if (statusParam === null) return;
+    const id = ++reqId.current;
+    startRefetch(async () => {
+      const res = await fetchMyPosts({ status: statusParam, search: term, page: 1 });
+      if (id !== reqId.current) return; // a newer request superseded this one
+      setItems(res.items);
+      setTotal(res.total);
+      setPage(1);
+      setHasMore(res.hasMore);
+      setCounts(res.counts);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, term]);
+
+  const loadMore = async () => {
+    if (statusParam === null) return;
+    setLoadingMore(true);
+    const id = ++reqId.current;
+    try {
+      const res = await fetchMyPosts({ status: statusParam, search: term, page: page + 1 });
+      if (id !== reqId.current) return;
+      setItems((prev) => [...prev, ...res.items]);
+      setTotal(res.total);
+      setPage((p) => p + 1);
+      setHasMore(res.hasMore);
+      setCounts(res.counts);
+    } catch {
+      toast("Couldn't load more - please try again");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Saved is the other growing list. Page 1 from props; "Load more" accumulates.
   const [savedExtra, setSavedExtra] = useState<Experience[]>([]);
   const [savedNextPage, setSavedNextPage] = useState(2);
   const [savedHasMore, setSavedHasMore] = useState(saved.hasMore);
@@ -86,29 +145,18 @@ export function MyPostsView({
     }
   };
 
-  const counts = useMemo(() => {
-    // "all" counts MY posts only - Saved is other people's posts, kept apart.
-    const c: Record<string, number> = {
-      all: posts.length,
-      Draft: draft ? 1 : 0,
-      Saved: saved.total,
-    };
-    for (const p of posts) c[p.status] = (c[p.status] || 0) + 1;
-    if (draft) c.all += 1;
-    return c;
-  }, [posts, draft, saved.total]);
+  // The local draft counts toward All/Draft, but only when not searching (it
+  // isn't part of the server's search results).
+  const draftCount = draft && !term ? 1 : 0;
+  const tabCount = (id: TabId): number => {
+    if (id === "all") return counts.all + draftCount;
+    if (id === "Draft") return draftCount;
+    if (id === "Saved") return saved.total;
+    return counts[id as ReviewStatus] ?? 0;
+  };
 
-  const list = useMemo(() => {
-    if (tab === "Draft" || tab === "Saved") return [];
-    if (tab === "all")
-      return [
-        ...posts.filter((p) => p.status !== "Deleted"),
-        ...posts.filter((p) => p.status === "Deleted"),
-      ];
-    return posts.filter((p) => p.status === tab);
-  }, [posts, tab]);
-
-  const showDraft = draft && (tab === "all" || tab === "Draft");
+  const showDraft = !!draft && !term && (tab === "all" || tab === "Draft");
+  const searchable = tab !== "Saved" && tab !== "Draft";
   const discardDraft = () => {
     if (!confirm("Discard this draft? This can't be undone.")) return;
     clearDraft();
@@ -130,10 +178,10 @@ export function MyPostsView({
         {/* Tabs */}
         <div className="mb-[18px] flex gap-1 overflow-x-auto rounded-md border border-border bg-surface p-1">
           {TABS.map((t) => {
-            const n = counts[t.id] ?? 0;
+            const n = tabCount(t.id);
             const active = tab === t.id;
-            if (n === 0 && t.id !== "all" && t.id !== "Draft" && t.id !== "Under Review" && t.id !== "Approved" && t.id !== "Saved")
-              return null; // edge-state tabs (Rejected/Withdrawn/Hidden/Deleted) appear only when non-empty
+            if (n === 0 && t.id !== tab && t.id !== "all" && t.id !== "Draft" && t.id !== "Under Review" && t.id !== "Approved" && t.id !== "Saved")
+              return null; // edge-state tabs (Rejected/Withdrawn/Hidden/Deleted) appear only when non-empty (or currently selected)
             return (
               <button
                 key={t.id}
@@ -164,6 +212,28 @@ export function MyPostsView({
             );
           })}
         </div>
+
+        {/* Search (My Posts list only - Saved/Draft are separate surfaces) */}
+        {searchable && (
+          <div className="relative mb-3.5">
+            <Icon.search className="pointer-events-none absolute left-[15px] top-1/2 size-4 -translate-y-1/2 text-fg-3" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search your posts by company, role, or round…"
+              className="h-11 w-full rounded-lg border border-border-strong bg-surface pl-[42px] pr-10 text-sm text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-3 focus:border-blue-border focus:shadow-[0_0_0_4px_var(--color-blue-soft)]"
+            />
+            {q && (
+              <button
+                onClick={() => setQ("")}
+                title="Clear"
+                className="absolute right-2.5 top-1/2 grid size-[26px] -translate-y-1/2 place-items-center rounded-full bg-bg-2 text-fg-3 hover:text-fg"
+              >
+                <Icon.x className="size-3" />
+              </button>
+            )}
+          </div>
+        )}
 
         {tab === "Saved" ? (
           savedItems.length === 0 ? (
@@ -197,22 +267,49 @@ export function MyPostsView({
               )}
             </>
           )
-        ) : list.length === 0 && !showDraft ? (
+        ) : items.length === 0 && !showDraft ? (
           <div className="rounded-lg border border-dashed border-border-strong px-5 py-10 text-center text-fg-3">
-            <strong className="mb-1.5 block font-semibold text-fg">
-              {tab === "Draft" ? "No drafts right now." : "Nothing here yet."}
-            </strong>
-            {tab === "Draft"
-              ? "When you start a share-experience post and step away, it'll wait for you here."
-              : "Posts in this state will appear here once you create some."}
+            {refetching ? (
+              <strong className="block font-semibold text-fg">Searching…</strong>
+            ) : term ? (
+              <>
+                <strong className="mb-1.5 block font-semibold text-fg">
+                  No posts match &ldquo;{q}&rdquo;.
+                </strong>
+                Try a different company, role, or round - or clear the search.
+              </>
+            ) : (
+              <>
+                <strong className="mb-1.5 block font-semibold text-fg">
+                  {tab === "Draft" ? "No drafts right now." : "Nothing here yet."}
+                </strong>
+                {tab === "Draft"
+                  ? "When you start a share-experience post and step away, it'll wait for you here."
+                  : "Posts in this state will appear here once you create some."}
+              </>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {showDraft && draft && <DraftRow draft={draft} onDiscard={discardDraft} />}
-            {list.map((p) => (
-              <MyPostRow key={p.id} post={p} />
-            ))}
-          </div>
+          <>
+            <div className={cn("flex flex-col gap-2.5", refetching && "opacity-60")}>
+              {showDraft && draft && <DraftRow draft={draft} onDiscard={discardDraft} />}
+              {items.map((p) => (
+                <MyPostRow key={p.id} post={p} />
+              ))}
+            </div>
+            {hasMore && (
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore || refetching}
+                  className="h-9 rounded-md border border-border bg-surface px-5 text-[13px] font-medium text-fg-2 hover:bg-surface-3 disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading…" : `Load more (${items.length} of ${total})`}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </>

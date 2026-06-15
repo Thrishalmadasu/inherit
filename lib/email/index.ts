@@ -23,7 +23,7 @@ export interface InviteEmail {
   to: string;
   subject: string; // merge tags already applied
   body: string; // merge tags already applied
-  replyTo: string; // the sending Ops member's SST email
+  replyTo: string; // where replies land — the shared Ops sending address (FROM_ADDRESS)
   ctaUrl: string; // absolute pre-filled /share link
 }
 
@@ -59,6 +59,29 @@ export function appOrigin(): string {
 // Text rendering of an invite: the merge-applied body, then the CTA link
 // (DEFAULT_BODY's "→ Share my … experience" line reads as its label).
 export const inviteText = (e: InviteEmail) => `${e.body}\n\n${e.ctaUrl}\n`;
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// HTML rendering of an invite — mirrors the composer's live preview: body lines
+// become paragraphs, and the "→ … experience" line becomes a real CTA button
+// linking to the prefilled share URL (no naked URL dump). Sent alongside
+// inviteText() as the plain-text fallback for clients that don't render HTML.
+export function inviteHtml(e: InviteEmail): string {
+  const body = e.body
+    .split("\n")
+    .map((line) => {
+      if (!line.trim()) return "<div style=\"height:10px\"></div>";
+      // A line that STARTS with an arrow (→, -> or =>) becomes the CTA button.
+      const cta = line.match(/^\s*(?:→|->|=>)\s+(.*)$/);
+      if (cta) {
+        return `<a href="${escapeHtml(e.ctaUrl)}" style="display:inline-block;margin:6px 0 14px;padding:11px 20px;background:#2ea0f8;border-radius:8px;color:#ffffff;font-weight:600;font-size:14px;line-height:1;text-decoration:none;">${escapeHtml(cta[1])} &rarr;</a>`;
+      }
+      return `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#2b2f37;">${escapeHtml(line)}</p>`;
+    })
+    .join("");
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#2b2f37;">${body}</div>`;
+}
 
 const consoleSender: EmailSender = {
   async sendStatus(e) {

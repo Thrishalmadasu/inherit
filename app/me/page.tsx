@@ -8,7 +8,7 @@ import { getMyPosts, getSavedExperiences } from "@/lib/db/queries";
 export default async function MyPostsPage() {
   const user = await requireDbUser();
   const [posts, saved] = await Promise.all([
-    getMyPosts(user.id),
+    getMyPosts(user.id, { status: "all", page: 1 }),
     getSavedExperiences(user.id, { page: 1 }),
   ]);
   return <MyPostsView posts={posts} saved={saved} />;

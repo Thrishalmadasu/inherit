@@ -498,21 +498,40 @@ function ModCard({
 // Compact inline rendering of the full submission for review.
 function FullPost({ item }: { item: OpsQueueItem }) {
   const d = item.detail;
+  // Group questions back into their rounds so reviewers see the pipeline, not a
+  // flat list (round name is dim otherwise). Sub-header only when >1 round.
+  const groups: { round?: string; questions: NonNullable<typeof d.questionsList> }[] = [];
+  for (const q of d.questionsList ?? []) {
+    const last = groups[groups.length - 1];
+    if (last && last.round === q.round) last.questions.push(q);
+    else groups.push({ round: q.round, questions: [q] });
+  }
   return (
     <div className="mb-3 flex flex-col gap-3 rounded-md border border-border bg-bg-2 p-3.5">
       {d.overview && <FullPostSection label="Overview" body={d.overview} />}
-      {(d.questionsList ?? []).map((q) => (
-        <div key={q.n} className="rounded-md border border-border bg-surface px-3 py-2.5">
-          <div className="mb-1 flex flex-wrap items-center gap-2 text-[11.5px] text-fg-3">
-            <b className="font-semibold text-fg-2">Q{q.n}</b>
-            <span>{q.topic}</span>
-            {q.difficulty > 0 && <span>· difficulty {q.difficulty}/5</span>}
-            {q.platform && <span>· {q.platform}</span>}
-          </div>
-          <p className="m-0 text-[13px] leading-[1.55] text-fg">{q.summary}</p>
-          {q.approach && (
-            <p className="mb-0 mt-1.5 text-[12.5px] leading-[1.55] text-fg-2">{q.approach}</p>
+      {groups.map((g, gi) => (
+        <div key={gi} className="flex flex-col gap-2.5">
+          {groups.length > 1 && g.round && (
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">
+              <span className="grid size-[18px] place-items-center rounded-full bg-blue-soft text-[10px] font-bold text-blue">
+                {gi + 1}
+              </span>
+              {g.round}
+            </div>
           )}
+          {g.questions.map((q) => (
+            <div key={q.n} className="rounded-md border border-border bg-surface px-3 py-2.5">
+              <div className="mb-1 flex flex-wrap items-center gap-2 text-[11.5px] text-fg-3">
+                <b className="font-semibold text-fg-2">Q{q.n}</b>
+                <span>{q.topic}</span>
+                {q.platform && <span>· {q.platform}</span>}
+              </div>
+              <p className="m-0 text-[13px] leading-[1.55] text-fg">{q.summary}</p>
+              {q.approach && (
+                <p className="mb-0 mt-1.5 text-[12.5px] leading-[1.55] text-fg-2">{q.approach}</p>
+              )}
+            </div>
+          ))}
         </div>
       ))}
       {(d.prepTips ?? []).length > 0 && (

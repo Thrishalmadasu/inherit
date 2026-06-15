@@ -1,31 +1,6 @@
 import { cn } from "@/lib/cn";
 import type { Author as AuthorType } from "@/lib/types";
 
-// ─── Difficulty bars 1–5 ───────────────────────────────────────────────────
-export function Difficulty({ value }: { value: number }) {
-  const hard = value >= 4;
-  return (
-    <span
-      className="inline-flex items-center gap-0.5"
-      title={`Difficulty ${value}/5`}
-    >
-      {[1, 2, 3, 4, 5].map((n) => (
-        <span
-          key={n}
-          className={cn(
-            "w-1 h-[9px] rounded-[1px]",
-            n <= value
-              ? hard
-                ? "bg-red shadow-[0_0_4px_rgba(239,90,90,0.4)]"
-                : "bg-amber shadow-[0_0_4px_rgba(245,181,68,0.4)]"
-              : "bg-gray-soft",
-          )}
-        />
-      ))}
-    </span>
-  );
-}
-
 // ─── Author byline (real or anonymous) ─────────────────────────────────────
 export function Author({ author }: { author: AuthorType }) {
   if (author.anonymous) {

@@ -40,14 +40,13 @@ export interface RoundEntry {
   round: string;
   status: RoundStatus;
   questions: number;
-  avgDifficulty?: number;
   platform?: string;
 }
 
 export interface QuestionDetail {
   n: number;
+  round?: string; // which round this question belongs to (detail grouping)
   topic: string;
-  difficulty: number;
   platform: string;
   time: string;
   summary: string;
@@ -72,7 +71,6 @@ export interface Experience {
   round?: string;
   outcome?: Outcome;
   questions?: number;
-  avgDifficulty?: number;
   platform?: string;
   duration?: string;
   reviewedAt?: string;
@@ -175,15 +173,4 @@ export function outcomeToStatus(outcome?: Outcome): RoundStatus {
   if (outcome === "Rejected" || outcome === "Withdrew") return "Failed";
   if (outcome === "Awaiting") return "Awaiting";
   return "Passed";
-}
-
-// Resolve a card-level avgDifficulty whether single- or multi-round.
-export function avgDifficultyOf(e: Experience): number {
-  if (e.rounds && e.rounds.length) {
-    const diffs = e.rounds
-      .map((r) => r.avgDifficulty)
-      .filter((d): d is number => typeof d === "number");
-    return diffs.length ? diffs.reduce((s, d) => s + d, 0) / diffs.length : 0;
-  }
-  return e.avgDifficulty || 0;
 }

@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { OutcomePill, PipeChip } from "@/components/ui/pill";
-import { Author, Difficulty, Dot } from "@/components/ui/primitives";
+import { Author, Dot } from "@/components/ui/primitives";
 import {
   type Experience,
   outcomeToStatus,
@@ -27,18 +27,11 @@ export function ExperienceCard({
             round: e.round ?? "",
             status: outcomeToStatus(e.outcome) as RoundStatus,
             questions: e.questions ?? 0,
-            avgDifficulty: e.avgDifficulty,
             platform: e.platform,
           },
         ];
   const overallOutcome = e.overallOutcome ?? e.outcome ?? "Awaiting";
   const totalQuestions = rounds.reduce((s, r) => s + (r.questions || 0), 0);
-  const difficulties = rounds
-    .map((r) => r.avgDifficulty)
-    .filter((d): d is number => typeof d === "number");
-  const avgDifficulty = difficulties.length
-    ? Math.round(difficulties.reduce((s, d) => s + d, 0) / difficulties.length)
-    : null;
   const platforms = [...new Set(rounds.map((r) => r.platform).filter(Boolean))];
   const company = e.company || "Amazon";
 
@@ -91,14 +84,6 @@ export function ExperienceCard({
           <Icon.list /> {totalQuestions}{" "}
           {totalQuestions === 1 ? "question" : "questions"}
         </span>
-        {avgDifficulty != null && (
-          <>
-            <Dot />
-            <span className="flex items-center gap-[5px] [&_svg]:size-3 [&_svg]:opacity-70">
-              <Icon.gauge /> Difficulty <Difficulty value={avgDifficulty} />
-            </span>
-          </>
-        )}
         {platforms.length > 0 && (
           <>
             <Dot />

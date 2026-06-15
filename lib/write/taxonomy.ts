@@ -215,6 +215,33 @@ export async function setRoundTypeActiveCore(
   await db.update(s.roundTypes).set({ isActive }).where(eq(s.roundTypes.id, id));
 }
 
+// Merge: fold `sourceId` into `targetId`. Rounds reference the type by its
+// denormalized name, so repoint every round carrying the source label to the
+// target's, then delete the source row. One batch - atomic dedup (mirrors
+// mergeCompaniesCore; round types have no aliases to absorb).
+export async function mergeRoundTypesCore(
+  actor: DbUser,
+  sourceId: string,
+  targetId: string,
+): Promise<{ target: string; moved: number }> {
+  assertMod(actor);
+  if (sourceId === targetId) throw new WriteError("Pick two different round types");
+  const [source] = await db.select().from(s.roundTypes).where(eq(s.roundTypes.id, sourceId));
+  const [target] = await db.select().from(s.roundTypes).where(eq(s.roundTypes.id, targetId));
+  if (!source || !target) throw new WriteError("Round type not found");
+
+  const [{ moved }] = await db
+    .select({ moved: sql<number>`count(*)::int` })
+    .from(s.rounds)
+    .where(eq(s.rounds.name, source.label));
+
+  await db.batch([
+    db.update(s.rounds).set({ name: target.label }).where(eq(s.rounds.name, source.label)),
+    db.delete(s.roundTypes).where(eq(s.roundTypes.id, sourceId)),
+  ]);
+  return { target: target.label, moved };
+}
+
 // ── Role types (concern #10, roles) ──────────────────────────────────────────
 export async function addRoleTypeCore(actor: DbUser, label: string): Promise<{ id: string }> {
   assertMod(actor);

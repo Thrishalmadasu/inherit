@@ -21,6 +21,7 @@ import {
   addTopic,
   fetchOpsCompanies,
   mergeCompanies,
+  mergeRoundTypes,
   renameCompany,
   renameRoleType,
   renameRoundType,
@@ -352,6 +353,7 @@ function RoundsTab({ canManage, roundTypes }: { canManage: boolean; roundTypes: 
   const { run, pending } = useRun();
   const [label, setLabel] = useState("");
   const [edit, setEdit] = useState<OpsRoundTypeRow | null>(null);
+  const [mergeFor, setMergeFor] = useState<OpsRoundTypeRow | null>(null);
 
   return (
     <>
@@ -389,6 +391,7 @@ function RoundsTab({ canManage, roundTypes }: { canManage: boolean; roundTypes: 
                   <td className={cn(TD, "text-right")}>
                     <div className="inline-flex gap-1.5">
                       <RowBtn onClick={() => setEdit(r)}>Rename</RowBtn>
+                      {roundTypes.length > 1 && <RowBtn onClick={() => setMergeFor(r)}>Merge</RowBtn>}
                       <RowBtn onClick={() => run(() => setRoundTypeActive(r.id, !r.isActive), r.isActive ? "Deactivated" : "Reactivated")}>
                         {r.isActive ? "Deactivate" : "Reactivate"}
                       </RowBtn>
@@ -415,7 +418,82 @@ function RoundsTab({ canManage, roundTypes }: { canManage: boolean; roundTypes: 
           run(() => renameRoundType(target.id, v.label), "Round type renamed", () => setEdit(null));
         }}
       />
+
+      <RoundMergeModal
+        source={mergeFor}
+        options={roundTypes}
+        busy={pending}
+        onClose={() => setMergeFor(null)}
+        onConfirm={(targetId) => {
+          const src = mergeFor;
+          if (!src) return;
+          run(
+            async () => {
+              const res = await mergeRoundTypes(src.id, targetId);
+              if (res.ok) toast(`Merged into ${res.data.target} (${res.data.moved} rounds moved)`);
+              return res;
+            },
+            "Round types merged",
+            () => setMergeFor(null),
+          );
+        }}
+      />
     </>
+  );
+}
+
+// Merge a round type into another. The full list is already in memory (small),
+// so the target is picked from a simple dropdown rather than a server search.
+function RoundMergeModal({
+  source,
+  options,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  source: OpsRoundTypeRow | null;
+  options: OpsRoundTypeRow[];
+  busy: boolean;
+  onConfirm: (targetId: string) => void;
+  onClose: () => void;
+}) {
+  const others = options.filter((o) => o.id !== source?.id);
+  const [target, setTarget] = useState("");
+  const key = source?.id ?? "";
+  const [seedKey, setSeedKey] = useState("");
+  if (source && key !== seedKey) {
+    setSeedKey(key);
+    setTarget(others[0]?.id ?? "");
+  }
+
+  return (
+    <Modal
+      open={!!source}
+      onOpenChange={(o) => !o && onClose()}
+      title={`Merge “${source?.label ?? ""}” into…`}
+      description={`Every round labelled “${source?.label ?? ""}” (${source?.uses ?? 0}) is relabelled to the target, then “${source?.label ?? ""}” is deleted. This can't be undone.`}
+    >
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-medium text-fg-3">Keep this round type</span>
+        <Select variant="sort" value={target} onChange={(e) => setTarget(e.target.value)}>
+          {others.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <div className="mt-3.5 flex justify-end gap-2">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          disabled={busy || !target}
+          onClick={() => target && onConfirm(target)}
+          className={cn("border-red-border bg-red-soft text-red hover:bg-[rgba(239,90,90,0.2)]", (busy || !target) && "cursor-not-allowed opacity-50")}
+        >
+          {busy ? "Merging…" : "Merge & delete source"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

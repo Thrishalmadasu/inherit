@@ -12,7 +12,7 @@ import { inArray } from "drizzle-orm";
 import { db, schema as s } from "@/lib/db";
 import type { DbUser } from "@/lib/auth";
 import { WriteError } from "@/lib/write/experiences";
-import { appOrigin, getEmailSender } from "@/lib/email";
+import { appOrigin, FROM_ADDRESS, getEmailSender } from "@/lib/email";
 import {
   applyMerge,
   buildManualRecipients,
@@ -116,7 +116,7 @@ export async function sendInvitesCore(actor: DbUser, input: unknown): Promise<Se
       to: r.email,
       subject: applyMerge(subject, r),
       body: applyMerge(body, r),
-      replyTo: actor.sstEmail,
+      replyTo: FROM_ADDRESS,
       ctaUrl: origin + shareLinkPath(r),
     })),
   );

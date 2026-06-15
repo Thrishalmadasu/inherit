@@ -101,7 +101,6 @@ export async function loadSheetExperience(expId: string): Promise<SheetExperienc
         .map((b) => ({
           blockType: b.blockType,
           prompt: b.prompt,
-          difficulty: b.difficulty,
           detail: b.detail,
           tags: tagRows
             .filter((t) => t.blockId === b.id)

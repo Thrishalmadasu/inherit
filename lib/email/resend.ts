@@ -11,6 +11,7 @@ import {
   FROM_ADDRESS,
   FROM_NAME,
   type InviteEmail,
+  inviteHtml,
   inviteText,
 } from "./index";
 
@@ -66,6 +67,7 @@ export const resendSender: EmailSender = {
             to: [e.to],
             reply_to: [e.replyTo],
             subject: e.subject,
+            html: inviteHtml(e),
             text: inviteText(e),
           })),
         );

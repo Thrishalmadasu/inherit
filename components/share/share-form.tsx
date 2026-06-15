@@ -54,21 +54,26 @@ export function ShareForm({
   const router = useRouter();
   const draftKey = editId ? editDraftKey(editId) : DRAFT_KEY;
 
-  // Initial form: in-progress edit draft → DB prefill → new draft → empty.
-  const [form, setForm] = useState<ShareDraftForm>(() => {
-    const existing = loadDraft(draftKey);
-    if (existing) return existing.form;
-    if (prefill) return prefill;
-    return emptyForm();
-  });
-  // Resume on the step the user left off (saved with the draft), clamped to a
-  // valid range in case STEPS changed or the stored value is stale.
-  const [step, setStep] = useState(() => {
-    const saved = loadDraft(draftKey)?.step ?? 0;
-    return Math.min(Math.max(saved, 0), STEPS.length - 1);
-  });
+  // Initial state is SSR-deterministic (DB prefill, or empty) so the server and
+  // first client render match. Any in-progress localStorage draft is layered on
+  // AFTER mount in the effect below — reading localStorage during render would
+  // make the client diverge from the server and break hydration.
+  const [form, setForm] = useState<ShareDraftForm>(() => prefill ?? emptyForm());
+  const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // Restore an in-progress draft once on mount (draft → wins over prefill).
+  // Runs client-only, so it can't desync the SSR'd HTML.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const existing = loadDraft(draftKey);
+    if (!existing) return;
+    setForm(existing.form);
+    setStep(Math.min(Math.max(existing.step ?? 0, 0), STEPS.length - 1));
+  }, [draftKey]);
 
   // Debounced autosave - only after the user actually touches the form. Persist
   // the current step too, so a mid-fill reload resumes in place (re-runs on

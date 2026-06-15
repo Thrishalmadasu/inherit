@@ -17,7 +17,6 @@ export interface SheetBlockTag {
 export interface SheetBlock {
   blockType: "coding" | "system_design" | "behavioral" | "open";
   prompt: string;
-  difficulty: number | null;
   detail: string | null;
   tags: SheetBlockTag[];
 }
@@ -47,7 +46,6 @@ export interface TechnicalRow {
   topics: string[]; // non-tooling tag labels
   isDsa: boolean; // any tag with is_dsa - the L&D DSA/non-DSA split
   tools: string[]; // tooling-category tags + the round's platform
-  difficulty: number | null; // 1–5
   question: string; // the prompt paraphrase
   link: string; // absolute experience URL
 }
@@ -71,8 +69,8 @@ export interface SheetRows {
 // Header rows for the two tabs - paste these as row 1 when creating the sheet
 // (the sync only appends data rows; it never writes headers).
 export const TECHNICAL_HEADERS = [
-  "Published", "Company", "Role", "Cycle", "Round", "Category",
-  "Topics", "DSA / Non-DSA", "Tools / Tech", "Difficulty (1-5)", "Question", "Link",
+  "Published", "Company", "Role", "Year", "Round", "Category",
+  "Topics", "DSA / Non-DSA", "Tools / Tech", "Question", "Link",
 ] as const;
 export const BEHAVIORAL_HEADERS = [
   "Published", "Company", "Role", "Round",
@@ -104,7 +102,6 @@ export function buildSheetRows(exp: SheetExperience, origin: string): SheetRows 
             ...b.tags.filter((t) => t.category === "tooling").map((t) => t.label),
             ...(round.platform ? [round.platform] : []),
           ],
-          difficulty: b.difficulty,
           question: b.prompt,
         });
       } else if (b.blockType === "behavioral") {
@@ -128,7 +125,7 @@ const list = (xs: string[]) => xs.join(", ");
 export const technicalCells = (r: TechnicalRow): Cell[] => [
   r.publishedOn, r.company, r.role, r.cycle, r.round, r.category,
   list(r.topics), r.isDsa ? "DSA" : "Non-DSA", list(r.tools),
-  r.difficulty ?? "", r.question, r.link,
+  r.question, r.link,
 ];
 
 export const behavioralCells = (r: BehavioralRow): Cell[] => [

@@ -51,9 +51,6 @@ export function CompaniesView({
         <div className="mb-[22px] flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="mb-1.5 text-[26px] font-bold tracking-[-0.02em]">Companies</h1>
-            <p className="text-sm text-fg-2">
-              {data.total} companies have placed SST students or are recruiting.
-            </p>
           </div>
           <form
             onSubmit={(e) => {

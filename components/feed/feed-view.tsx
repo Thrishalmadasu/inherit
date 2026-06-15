@@ -11,14 +11,6 @@ import { cn } from "@/lib/cn";
 import { toast } from "@/lib/toast";
 import type { Experience } from "@/lib/types";
 
-const ROUND_FILTERS = [
-  { id: "all", label: "All rounds" },
-  { id: "OA", label: "OA" },
-  { id: "Tech", label: "Tech" },
-  { id: "System Design", label: "System Design" },
-  { id: "Behavioral", label: "Behavioural" },
-  { id: "HR", label: "HR" },
-];
 const OUTCOME_FILTERS = [
   { id: "all", label: "Any outcome" },
   { id: "Offer", label: "Offer" },
@@ -27,7 +19,18 @@ const OUTCOME_FILTERS = [
   { id: "Rejected", label: "Rejected" },
 ];
 
-export function FeedView({ initial }: { initial: FeedPage }) {
+export function FeedView({
+  initial,
+  roundFilters,
+}: {
+  initial: FeedPage;
+  roundFilters: string[];
+}) {
+  // Round chips come from real data (most-used round names) — never stale.
+  const roundChips = [
+    { id: "all", label: "All rounds" },
+    ...roundFilters.map((r) => ({ id: r, label: r })),
+  ];
   const [round, setRound] = useState("all");
   const [outcome, setOutcome] = useState("all");
   const [sort, setSort] = useState<FeedSort>("latest");
@@ -95,7 +98,7 @@ export function FeedView({ initial }: { initial: FeedPage }) {
 
         <div className="mb-3.5 flex flex-col gap-2.5 rounded-lg border border-border bg-surface px-[18px] py-4">
           <FilterGroup label="Round">
-            {ROUND_FILTERS.map((f) => (
+            {roundChips.map((f) => (
               <Chip key={f.id} label={f.label} active={round === f.id} onClick={() => setRound(f.id)} />
             ))}
           </FilterGroup>

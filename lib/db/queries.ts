@@ -481,6 +481,21 @@ export interface FeedPage {
   hasMore: boolean;
 }
 
+// Round-filter chips for the feed: the round names actually used by visible
+// posts, most-used first (capped) — so every chip yields results and none go
+// stale, unlike the old hardcoded list.
+export async function getFeedRoundFilters(limit = 8): Promise<string[]> {
+  const rows = await db
+    .select({ name: s.rounds.name })
+    .from(s.rounds)
+    .innerJoin(s.experiences, eq(s.experiences.id, s.rounds.experienceId))
+    .where(visibleExp)
+    .groupBy(s.rounds.name)
+    .orderBy(desc(count()))
+    .limit(limit);
+  return rows.map((r) => r.name);
+}
+
 export async function listFeedPage(opts: FeedQuery = {}): Promise<FeedPage> {
   const pageSize = Math.min(Math.max(opts.pageSize ?? 10, 1), 50);
   const page = Math.max(opts.page ?? 1, 1);
@@ -494,10 +509,10 @@ export async function listFeedPage(opts: FeedQuery = {}): Promise<FeedPage> {
     );
   const round = opts.round && opts.round !== "all" ? opts.round : null;
   if (round) {
-    const nameCond =
-      round === "Tech" ? sql`${s.rounds.name} ilike 'Tech%'` : sql`${s.rounds.name} = ${round}`;
+    // Exact match — the feed's round chips are real round-type names (see
+    // getFeedRoundFilters), so no prefix/grouping heuristics needed.
     conds.push(
-      sql`exists (select 1 from ${s.rounds} where ${s.rounds.experienceId} = ${s.experiences.id} and ${nameCond})`,
+      sql`exists (select 1 from ${s.rounds} where ${s.rounds.experienceId} = ${s.experiences.id} and ${s.rounds.name} = ${round})`,
     );
   }
   const where = and(...conds);

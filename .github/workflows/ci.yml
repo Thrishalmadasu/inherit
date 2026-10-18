@@ -17,11 +17,11 @@ jobs:
     name: Lint, type-check, secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -33,7 +33,9 @@ jobs:
         run: npm run lint
 
       - name: Type-check
-        run: npx tsc --noEmit
+        run: |
+          npx next typegen
+          npx tsc --noEmit
 
       - name: Lint Helm chart
         run: helm lint charts/inherit --set image.tag=ci
@@ -51,7 +53,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set image tag to the commit
         run: echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"

@@ -1,0 +1,43 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "inherit.fullname" . }}
+  labels:
+    {{- include "inherit.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: inherit
+      rules:
+        - alert: InheritAvailabilityBelowSLO
+          expr: avg_over_time(probe_success{job="inherit-probe"}[5m]) < 0.99
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Inherit endpoint success rate is below the 99% target.
+            action: Check pods, recent logs and helm history; roll back if a release caused it.
+        - alert: InheritSlowResponses
+          expr: avg_over_time(probe_duration_seconds{job="inherit-probe"}[5m]) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Inherit responses take longer than 1s on average.
+            action: Check pod CPU and memory, and Neon/Clerk latency.
+        - alert: InheritReplicasUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}", deployment="{{ include "inherit.fullname" . }}"} < {{ .Values.replicaCount }}
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Fewer Inherit pods are ready than configured.
+            action: kubectl describe the pods; check probes and image pulls.
+        - alert: InheritPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", container="{{ .Chart.Name }}"}[15m]) > 2
+          labels:
+            severity: warning
+          annotations:
+            summary: An Inherit pod restarted more than twice in 15 minutes.
+            action: kubectl logs --previous on the pod to find the crash.
+{{- end }}

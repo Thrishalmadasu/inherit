@@ -84,3 +84,8 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+monitoring:
+  enabled: false
+  namespace: monitoring
+  prober: blackbox-exporter.monitoring.svc:9115

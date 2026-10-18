@@ -15,6 +15,11 @@ spec:
   ingress:
     - from:
         - podSelector: {}
+        {{- if .Values.monitoring.enabled }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.namespace }}
+        {{- end }}
       ports:
         - port: http
   egress:

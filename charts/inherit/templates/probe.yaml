@@ -1,0 +1,19 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ include "inherit.fullname" . }}
+  labels:
+    {{- include "inherit.labels" . | nindent 4 }}
+spec:
+  jobName: inherit-probe
+  interval: 15s
+  module: http_2xx
+  prober:
+    url: {{ .Values.monitoring.prober }}
+  targets:
+    staticConfig:
+      static:
+        - http://{{ include "inherit.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/api/health
+        - http://{{ include "inherit.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/sign-in
+{{- end }}

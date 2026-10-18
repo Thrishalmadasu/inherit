@@ -1,0 +1,86 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/thrishalmadasu/inherit
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 3000
+
+existingSecret: inherit-secrets
+
+config:
+  EMAIL_DRIVER: console
+  SHEETS_DRIVER: console
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  periodSeconds: 5
+  failureThreshold: 3
+
+volumes:
+  - name: next-cache
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+
+volumeMounts:
+  - name: next-cache
+    mountPath: /app/.next/cache
+  - name: tmp
+    mountPath: /tmp
+
+networkPolicy:
+  enabled: true
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

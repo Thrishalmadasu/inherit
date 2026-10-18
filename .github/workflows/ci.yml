@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, devops]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/thrishalmadasu/inherit
+
+jobs:
+  checks:
+    name: Lint, type-check, secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint Helm chart
+        run: helm lint charts/inherit --set image.tag=ci
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Build, scan, test on Kubernetes, publish
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag to the commit
+        run: echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }} \
+            --build-arg APP_VERSION=$TAG \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            --label org.opencontainers.image.revision=${{ github.sha }} \
+            -t $IMAGE:$TAG .
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ env.TAG }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Create test cluster
+        uses: helm/kind-action@v1
+
+      - name: Deploy to test cluster and run smoke test
+        run: |
+          kind load docker-image $IMAGE:$TAG --name chart-testing
+          kubectl create namespace inherit
+          kubectl -n inherit create secret generic inherit-secrets \
+            --from-literal=DATABASE_URL=postgresql://ci:ci@localhost/ci \
+            --from-literal=CLERK_SECRET_KEY=sk_test_ci_placeholder
+          helm install inherit charts/inherit -n inherit \
+            --set image.tag=$TAG --set image.pullPolicy=Never --wait --timeout 3m
+          helm test inherit -n inherit
+
+      - name: Publish image to GHCR
+        if: github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push $IMAGE:$TAG
+          echo "Published \`$IMAGE:$TAG\` from commit ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"

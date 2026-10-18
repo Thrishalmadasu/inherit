@@ -347,7 +347,7 @@ async function main() {
   console.log("\n- engagement: saves + the visibility invariant -");
   await setSavedCore(student2, id1, true);
   await setSavedCore(student2, id1, true); // idempotent
-  let savedList = (await getSavedExperiences(student2.id)).items;
+  const savedList = (await getSavedExperiences(student2.id)).items;
   ok(savedList.length === 1 && savedList[0].id === id1, "saved list shows the bookmark once");
   ok((await getViewerEngagement(student2.id, id1)).saved, "viewer-engagement read sees the save");
   await hideCore(moderator, id1, "Verify-script hide for the saved-tab invariant.");

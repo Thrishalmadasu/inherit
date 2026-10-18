@@ -16,6 +16,9 @@ jobs:
   checks:
     name: Lint, type-check, secret scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v5
         with:

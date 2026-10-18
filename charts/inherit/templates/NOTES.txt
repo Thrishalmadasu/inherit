@@ -1,0 +1,8 @@
+Inherit {{ .Values.image.tag }} deployed to namespace {{ .Release.Namespace }}.
+
+Open the app:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "inherit.fullname" . }} 3000:{{ .Values.service.port }}
+  then visit http://localhost:3000
+
+Verify the release:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

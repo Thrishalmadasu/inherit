@@ -1,0 +1,79 @@
+{
+  "title": "Inherit",
+  "uid": "inherit",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Availability (5m)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "avg_over_time(probe_success{job=\"inherit-probe\"}[5m])", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0.99 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Ready pods",
+      "gridPos": { "x": 6, "y": 0, "w": 4, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "kube_deployment_status_replicas_available{namespace=\"inherit\", deployment=\"inherit\"}" }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 2 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Running version",
+      "gridPos": { "x": 10, "y": 0, "w": 8, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "count by (image) (kube_pod_container_info{namespace=\"inherit\", container=\"inherit\"})", "legendFormat": "{{image}}" }],
+      "options": { "textMode": "name", "colorMode": "none" }
+    },
+    {
+      "type": "stat",
+      "title": "Firing alerts",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "count(ALERTS{alertname=~\"Inherit.*\", alertstate=\"firing\"}) or vector(0)" }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Response time",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "probe_duration_seconds{job=\"inherit-probe\"}", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Probe success",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "probe_success{job=\"inherit-probe\"}", "legendFormat": "{{instance}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory per pod",
+      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "container_memory_working_set_bytes{namespace=\"inherit\", container=\"inherit\"}", "legendFormat": "{{pod}}" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU per pod",
+      "gridPos": { "x": 8, "y": 13, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(container_cpu_usage_seconds_total{namespace=\"inherit\", container=\"inherit\"}[5m])", "legendFormat": "{{pod}}" }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Restarts (1h)",
+      "gridPos": { "x": 16, "y": 13, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"inherit\", container=\"inherit\"}[1h])", "legendFormat": "{{pod}}" }]
+    }
+  ]
+}

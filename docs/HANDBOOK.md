@@ -102,7 +102,6 @@ web/
 │  ├─ ops/invite-view.tsx     # invite tab: CSV drop zone, buckets table, compose+preview
 │  ├─ company|companies|experience|feed|search/  # per-screen client views
 │  ├─ top-nav.tsx, user-menu.tsx, hero-search.tsx, icons.tsx
-│  ├─ restricted-screen.tsx   # non-SST account blocked screen (§7)
 ├─ lib/
 │  ├─ types.ts                # ★ shared DTO types + card helpers (see §6)
 │  ├─ auth.ts                 # ensureDbUser (Clerk→users mirror) + requireDbUser /
@@ -282,13 +281,12 @@ Shipped in Session 1. Four layers, outermost first:
 2. **Clerk dashboard restrictions** — the real SST-only gate. Google-only sign-in +
    `sst.scaler.com` domain allowlist (Configure → Restrictions). Lives in the Clerk
    app `verified-doberman-18`, not in code.
-3. **Code-level domain backstop** — `ensureDbUser()`/`requireDbUser()` in `lib/auth.ts`,
-   called from the root layout. A signed-in account that is neither `@sst.scaler.com` NOR
-   on `ALLOWED_EXTERNAL_EMAILS` gets `components/restricted-screen.tsx` (sign-out + retry)
-   instead of the app, even if the dashboard allowlist is misconfigured. Never trust one
-   layer. **To allow a specific external guest:** add them to Clerk's allowlist (so they can
-   sign in) AND to `ALLOWED_EXTERNAL_EMAILS` (so this backstop lets them through) — both, via
-   `isAllowedEmail()`.
+3. ~~Code-level domain backstop~~ — **removed 2026-06-13** (with `ALLOWED_EXTERNAL_EMAILS`
+   and `components/restricted-screen.tsx`). The Clerk dashboard is now the single
+   source of truth for who may sign in: whoever authenticates through Clerk gets the
+   app. **To allow an external guest:** add their email to Clerk's allowlist — that's
+   the whole procedure. Consequence to stay aware of: a Clerk-dashboard mistake (e.g.
+   accidentally clearing the domain restriction) is no longer caught in code.
 4. **`/ops/*` gate** — `app/ops/layout.tsx` checks the DB role
    (moderator/super_admin) **OR** the `OPS_EMAILS` env allowlist
    (`lib/auth.isOpsUser`); the allowlist stays as a bootstrap so a bad roles table
@@ -395,7 +393,6 @@ npx vercel deploy --prod --yes   # deploy
   | `CLERK_SECRET_KEY` | Clerk backend key (`sk_test_…` for now) |
   | `OPS_EMAILS` | comma-separated `/ops` ACCESS bootstrap — OR-gate alongside DB roles (moderator/super_admin); keeps moderation reachable if the roles table is misconfigured |
   | `SUPER_ADMIN_EMAILS` | comma-separated bootstrap for the SUPER-ADMIN power (granting roles in `/ops/users`). **Required in prod** until a `super_admin` row exists, else nobody can assign roles. `ensureDbUser` writes it THROUGH to the DB on sign-in (self-healing — the listed user becomes `super_admin` in the table + audit), so once they've signed in the var is redundant and removable. Keep to the 1–2 role owners; distinct from `OPS_EMAILS` so a student-moderator never gains role-management power |
-  | `ALLOWED_EXTERNAL_EMAILS` | comma-separated guests allowed in **despite not being `@sst.scaler.com`** (e.g. an external admin/partner). Relaxes the code-level domain backstop only (§7); the SAME address must ALSO be on Clerk's allowlist or Clerk won't authenticate them. SST accounts always pass without this |
   | `DEV_AUTH_BYPASS` | `1` enables dev impersonation (§7) — **`.env.local` ONLY, never Vercel** |
   | `RESEND_API_KEY` | flips `lib/email` from console stub → Resend (real sends!). Needs the From domain verified in Resend (SPF/DKIM DNS) first |
   | `NEXT_PUBLIC_EMAIL_FROM` | sender address once Ops locks the subdomain (PRD §15 Q4); defaults to `ops@inherit.sst.scaler.com`. Build-time inlined → redeploy to change |
@@ -416,8 +413,8 @@ npx vercel deploy --prod --yes   # deploy
 
 1. ~~**Clerk auth**~~ ✅ **Done (Session 1)** — see §7. The `sst.scaler.com`
    domain allowlist in the Clerk dashboard (Configure → Restrictions) was
-   **confirmed set by Thrishal on 2026-06-12**; the code backstop remains as
-   the second layer.
+   **confirmed set by Thrishal on 2026-06-12**; the code backstop was removed
+   2026-06-13 (Clerk dashboard is now the sole sign-in gate, §7 #3).
 2. ~~**Write loop**~~ ✅ **Done (Session 2)** — see §4 conventions, §5 invariants, §8
    seam. Verified by `db/verify-write-loop.ts` (39 assertions: FIFO incl.
    resubmission ordering, visibility on every surface for hidden/deleted/pending,
@@ -584,8 +581,9 @@ npx vercel deploy --prod --yes   # deploy
   decided 2026-06-12, replacing the same-day unique-viewer implementation.
 - **Every post reviewed before publish; FIFO queue, no fast-tracking** (PRD §10).
 - **Anonymity:** default real name; per-post anonymous toggle; Ops always sees identity.
-- **SST-only, permanently** — enforced since Session 1 (Clerk allowlist + code
-  backstop, §7); `robots.txt` still TODO.
+- **SST-only, permanently** — enforced by the Clerk dashboard allowlist (sole
+  gate since 2026-06-13 — the code backstop was removed, §7 #3); externals are
+  admitted one email at a time via the same dashboard. `robots.txt` still TODO.
 - **Soft-delete forever** (author restore any time) vs **Ops hide with required reason**
   (logged, reversible) — two separate mechanisms by design.
 - **Block-composed rounds** — a round can mix coding/system-design/behavioral/open blocks;

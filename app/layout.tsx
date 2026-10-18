@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ensureDbUser } from "@/lib/auth";
 import { ViewerProvider } from "@/lib/viewer";
-import { RestrictedScreen } from "@/components/restricted-screen";
 import "./globals.css";
 
 const inter = Inter({
@@ -81,13 +80,9 @@ export default async function RootLayout({
             signUpUrl="/sign-up"
             afterSignOutUrl="/sign-in"
           >
-            {gate.status === "wrong-domain" ? (
-              <RestrictedScreen email={gate.email} />
-            ) : (
-              <ViewerProvider viewer={gate.status === "ok" ? gate.viewer : null}>
-                {children}
-              </ViewerProvider>
-            )}
+            <ViewerProvider viewer={gate.status === "ok" ? gate.viewer : null}>
+              {children}
+            </ViewerProvider>
           </ClerkProvider>
         )}
       </body>

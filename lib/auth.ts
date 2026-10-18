@@ -8,8 +8,6 @@ import { db, schema as s } from "@/lib/db";
 import { batchYearFromEmail, cleanPersonName } from "@/lib/user-display";
 import type { Viewer } from "@/lib/viewer";
 
-export const SST_DOMAIN = "sst.scaler.com";
-
 // ── Dev impersonation (handbook §7) ──────────────────────────────────────────
 // The preview/headless browser can never complete a Clerk dev-instance flow
 // (it requires top-level navigation to *.clerk.accounts.dev). Under `next
@@ -68,23 +66,8 @@ export function isSuperAdminEmail(email?: string | null): boolean {
   return envAllowlist(process.env.SUPER_ADMIN_EMAILS, email);
 }
 
-// ALLOWED_EXTERNAL_EMAILS: explicit guests who may use the app despite NOT
-// being @sst.scaler.com (e.g. a placement-cell partner, an external admin).
-// The domain gate stays the default; this is a per-email exception. Add the
-// SAME address to Clerk's allowlist too, or Clerk won't let them authenticate
-// in the first place - this only relaxes our code-level backstop (handbook §7).
-export function isAllowedExternalEmail(email?: string | null): boolean {
-  return envAllowlist(process.env.ALLOWED_EXTERNAL_EMAILS, email);
-}
-
-// Who may use the app: any SST account, OR an explicitly allowlisted guest.
-export function isAllowedEmail(email?: string | null): boolean {
-  return Boolean(email && email.toLowerCase().endsWith(`@${SST_DOMAIN}`)) || isAllowedExternalEmail(email);
-}
-
 export type AuthGate =
   | { status: "signed-out" }
-  | { status: "wrong-domain"; email: string }
   | { status: "ok"; email: string; viewer: Viewer };
 
 // Mirror the Clerk user into our `users` table (upsert by sst_email) on first
@@ -115,10 +98,12 @@ export async function ensureDbUser(): Promise<AuthGate> {
   const user = await currentUser();
   if (!user) return { status: "signed-out" };
 
+  // Who may sign in is decided entirely in the Clerk dashboard (Google-only +
+  // the sst.scaler.com domain allowlist / individually allowed emails). The
+  // former code-level domain backstop was removed 2026-06-13: one place to
+  // manage access, and adding a guest in Clerk is sufficient.
   const email = (user.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
-  // Backstop to the Clerk dashboard allowlist - never trust one layer. SST
-  // accounts pass; specific external guests pass via ALLOWED_EXTERNAL_EMAILS.
-  if (!isAllowedEmail(email)) return { status: "wrong-domain", email };
+  if (!email) return { status: "signed-out" }; // Clerk user with no email - nothing to key on
 
   const wantsSuper = isSuperAdminEmail(email);
   const name = cleanPersonName(user.fullName) || shortFromEmail(email);
@@ -193,7 +178,7 @@ export async function requireDbUser(): Promise<DbUser> {
 
   const user = await currentUser();
   const email = (user?.primaryEmailAddress?.emailAddress ?? "").toLowerCase();
-  if (!user || !isAllowedEmail(email)) throw new Error("Not signed in");
+  if (!user || !email) throw new Error("Not signed in");
   const [row] = await db.select().from(s.users).where(eq(s.users.sstEmail, email));
   if (!row) throw new Error("No account - reload and try again");
   return row;
